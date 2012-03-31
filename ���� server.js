@@ -1,5 +1,7 @@
 var net = require("net")
 	,sys = require("sys");
+var mongoose = require("mongoose");
+var oplogMongoose = require("./model/oplog.rs");
 var config = require("./server.config") || {};
 var PORT = config.port || 8081;
 var HOST = config.host || "127.0.0.1";
@@ -53,7 +55,6 @@ var server = net.createServer(function(c){
 	c.on("end",function(){
 		// reset key in regClientObj to null
 		regClientObj[regClientKeyObj[genderIPKey(c)]] = null;
-		regClientKeyObj[genderIPKey(c)] = null;
 		console.log("server disconnected %s:%s" , c.remoteAddress , c.remotePort);
 	});
 	c.pipe(c);
@@ -75,44 +76,30 @@ var intervals = setInterval(syncMongodb , LOOPTIME * 1000);
 function genderIPKey(c){
 	return c.remoteAddress + ":" + c.remotePort;
 }
-/**
-* add dbName to configued cluster_info,for example
-* clusterInfo --> mongodb://127.0.0.1:27017/,mongodb://127.0.0.1:27018/ 
-* dbName --> local
-* return mongodb://127.0.0.1:27017/local,mongodb://127.0.0.1:27018/local
-*/
-function addDbToClustersinfo(dbName,clusterInfo){
-	return (clusterInfo + dbName).replace(/,/gim , dbName + ",");
-}
 var mongooses = {};
 /**
 * looping for sync mongodb
 */
 function syncMongodb(){
 	for(var k in regClientObj){
-		if(regClientObj[k] != null){
-			var clusterinfo = addDbToClustersinfo("test" , KEYSOBJ[k].cluster_info);
-			console.log(clusterinfo);
-			var oplogMongoose = require("./model/test");
-			//oplogMongoose.mongoose.connectSet(clusterinfo);	
-			oplogMongoose.mongoose.connect(clusterinfo.split(",")[0]);	
-			var OplogModel = oplogMongoose.dao;		
-			// test read ,always error 
-			OplogModel.find(null,null,null,function(err,data){
-				if(!err){
-					oplogMongoose.mongoose.disconnect();
-					console.log(k + ":" + data[1]);
-				}
-			});
+		var clusterinfo = KEYSOBJ[k].cluster_info;
+		console.log(clusterinfo);
+		if(!mongooses[clusterinfo]){
+			mongoose.connectSet(clusterinfo); 
+			mongoose.model(oplogMongoose.modelName,oplogMongoose.schema,oplogMongoose.collName);
+		}else{
 
-			//test write(ok)
-			//var dao = new OplogModel();
-			//dao.age = 11;
-			//dao.name = "asdfasdfasdf";
-			//dao.save(function(err){
-			//	console.log(err);
-			//});
 		}
+		var OplogModel = mongoose.model(oplogMongoose.modelName,oplogMongoose.collName);
+		OplogModel.find(null,null,null,function(err,data){
+			if(!err){
+				for(var k in mongoose){
+					console.log(k );
+				}
+				mongoose.disconnect();
+			}
+			//console.log("_____" + err + ":" + data);
+		});
 		//regClientObj[k].write("client " + c.remoteAddress + ":" + c.remotePort + " connected");
 	}
 }
