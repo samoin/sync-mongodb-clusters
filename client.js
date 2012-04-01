@@ -10,7 +10,7 @@ client.connect(PORT , HOST , function(){
 	client.write('{type:1,info:' + JSON.stringify(KEY) + '}');
 });
 client.on("data", function(data){
-	console.log(data.toString());
+	console.log(data);
 });
 client.on("end", function(){
 	console.log("client disconnected");

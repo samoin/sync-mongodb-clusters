@@ -1,8 +1,8 @@
-var mongoose = require('mongoose'),  
+var mongoose = require('mongoose2'),  
     Schema = mongoose.Schema,  
     ObjectId = Schema.ObjectId;  
 var OplogSchema = new mongoose.Schema({
-	ts : {type : Schema.Types.Mixed},
+	ts : {type : Number},
 	h : {type : Number},
 	op : {type : String},
 	ns : {type : String},
@@ -11,11 +11,11 @@ var OplogSchema = new mongoose.Schema({
 });
 var modelName = "oplog.rs",
         collName = "oplog.rs";
-mongoose.model(modelName,OplogSchema,collName);
-var Model = mongoose.model(modelName,collName);
-exports.dao = Model;
+//mongoose.model(modelName,OplogSchema,collName);
+//var Model = mongoose.model(modelName,collName);
+//exports.dao = Model;
 // 将参数继续暴露给后续的进行引用，减少require代码
-exports.mongouris = "";
+//exports.mongouris = "";
 exports.schema = OplogSchema;
 exports.modelName = modelName;
 exports.collName = collName;

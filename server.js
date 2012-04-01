@@ -1,3 +1,6 @@
+// that seems mongoose don't suport more than one datasource,
+// so i copy mongoose ,an renamed "mongoose2" , so they can provide two datasource.
+// is there any other way ? help...
 var net = require("net")
 	,sys = require("sys");
 var config = require("./server.config") || {};
@@ -5,18 +8,23 @@ var PORT = config.port || 8081;
 var HOST = config.host || "127.0.0.1";
 var KEYS = config.keys || [];
 var MAXSYNCPER = config.max_sync_count_per || 100;
+var SERVER_CLUSTER = config.server_clusters_info || "";
 var LOOPTIME = config.loop_time || 1;//unit(sec)
+var oplog = require("./model/oplog")
+	,oplogDao = oplog.dao;
+var oplogRs = require("./model/oplog.rs");
+oplogRs.mongoose.connectSet(SERVER_CLUSTER);
+oplogRs.mongoose.model(oplogRs.modelName,oplogRs.schema,oplogRs.collName);
 //key:name,val:keyobj
 var KEYSOBJ = {};
 for(var i=0 ; i<KEYS.length ; i++){
 	var tmp = KEYS[i];
 	KEYSOBJ[tmp.name  + "-" + tmp.key] = tmp;
 }
-
 // registed clientObjects
 var regClientObj = {};
-
 var regClientKeyObj = {};
+
 //create server
 var server = net.createServer(function(c){
 	c.setEncoding("utf8");
@@ -84,35 +92,71 @@ function genderIPKey(c){
 function addDbToClustersinfo(dbName,clusterInfo){
 	return (clusterInfo + dbName).replace(/,/gim , dbName + ",");
 }
-var mongooses = {};
 /**
 * looping for sync mongodb
 */
 function syncMongodb(){
 	for(var k in regClientObj){
 		if(regClientObj[k] != null){
-			var clusterinfo = addDbToClustersinfo("test" , KEYSOBJ[k].cluster_info);
-			console.log(clusterinfo);
-			var oplogMongoose = require("./model/test");
-			//oplogMongoose.mongoose.connectSet(clusterinfo);	
-			oplogMongoose.mongoose.connect(clusterinfo.split(",")[0]);	
-			var OplogModel = oplogMongoose.dao;		
-			// test read ,always error 
-			OplogModel.find(null,null,null,function(err,data){
+			oplogDao.find({"cluster_name" : k},null,function(err,data){
 				if(!err){
-					oplogMongoose.mongoose.disconnect();
-					console.log(k + ":" + data[1]);
+					var isNew = false;
+					var dao = new oplogDao();
+					if((!data && !data.cluster_name) || data == ""){
+						dao.cluster_name = k;
+						dao.last_flag = 0;	
+						isNew = true;
+					}
+					dao.cluster_ischanged = false;
+					dao._id = data._id;
+					
+					if(isNew){
+						dao.save(function(err){
+							if(!err){//null
+								startSync(k , dao.last_flag);
+							}
+						});
+					}else{
+						oplogDao.update({_id:dao._id},{cluster_ischanged : false},function(err, numAffected){
+							if(!err){//null:0
+								startSync(k , dao.last_flag);
+							}
+						});
+					}
 				}
 			});
-
-			//test write(ok)
-			//var dao = new OplogModel();
-			//dao.age = 11;
-			//dao.name = "asdfasdfasdf";
-			//dao.save(function(err){
-			//	console.log(err);
-			//});
 		}
-		//regClientObj[k].write("client " + c.remoteAddress + ":" + c.remotePort + " connected");
 	}
+}
+
+/**
+* start sync with cluster_name
+*/
+function startSync(cluster_name,last_flag){
+	//var cluster_info = SERVER_CLUSTER;
+	console.log(SERVER_CLUSTER);
+	var oplogRsDao = oplogRs.mongoose.model(oplogRs.modelName,oplogRs.collName);
+	/**var Timestamp = require('mongolian').Timestamp  // == Long {limit : MAXSYNCPER} {ts :  {$gt : new Timestamp(1,1333091520) }} var t = new oplogRsDao();
+	t.ns = "ss";
+	t.save(function(err){
+		console.log(err);
+	});*/
+	//console.log(cluster_name + "___" + new Timestamp(1,1333091520));
+	/***/
+
+	oplogRsDao.find(null , null , {limit : MAXSYNCPER , skip : last_flag} , function(err,data){
+		if(!err){
+			// because of replica set:
+			// i need to disconnect every time ,otherwise , it will throw exception
+			// Error: db object already connecting, open cannot be called multiple times
+			// at Db.open (/cygdrive/e/nodespace/sync-mongodb-cluster/node_modules/mongoose...
+			var result = {type:3,info:data};
+			var buff = new Buffer(JSON.stringify(result), 'utf8');
+			console.log(buff.length + ":" + JSON.stringify(result).length);
+			regClientObj[cluster_name].write(buff);
+			//regClientObj[cluster_name].write("\0");
+			//console.log(result);
+		}
+	});
+
 }
