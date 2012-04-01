@@ -11,6 +11,11 @@ client.connect(PORT , HOST , function(){
 });
 client.on("data", function(data){
 	console.log(data);
+	//get buff info
+
+	//decode buff info
+
+	//sync info
 });
 client.on("end", function(){
 	console.log("client disconnected");
