@@ -12,8 +12,8 @@
 module.exports = {
 	port : 8081,
 	host : "127.0.0.1",
-	loop_time : 10,
-	max_sync_count_per : 2,
+	loop_time : 5,
+	max_sync_count_per : 3,
 	keys : [
 			{name : "ty2" , key : "1234567890ty2" , cluster_info : "mongodb://127.0.0.1:47017/test,mongodb://127.0.0.1:47018/test,mongodb://127.0.0.1:47019/test"},
 			{name : "sh" , key : "9876543210sh"}
