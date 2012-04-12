@@ -1,6 +1,7 @@
-// that seems mongoose don't suport more than one datasource,
-// so i copy mongoose ,an renamed "mongoose2" , so they can provide two datasource.
-// is there any other way ? help...
+/** that seems mongoose don't suport more than one datasource,
+* so i copy mongoose ,an renamed "mongoose2" , so they can provide two datasource.
+* is there any other way ? help...
+*/
 var net = require("net")
 	,sys = require("sys");
 var config = require("./server.config") || {};
@@ -24,6 +25,10 @@ for(var i=0 ; i<KEYS.length ; i++){
 // registed clientObjects
 var regClientObj = {};
 var regClientKeyObj = {};
+// call zip before send buff
+var zlib = require('zlib');
+var clientState = {};
+
 
 //create server
 var server = net.createServer(function(c){
@@ -35,8 +40,10 @@ var server = net.createServer(function(c){
 	});
 
 	c.on("data",function(data){
-		//type: {1:secrue,2:msg},info:{}
+		console.log(data);
+		//type: {1:secrue,2:msg,3:syncInfo},info:{}
 		var result = eval("(" + data + ")");
+		// first time ,register
 		if(result.type == 1){
 			var secrue = result.info;
 			var key = secrue.name + "-" + secrue.key;
@@ -49,10 +56,20 @@ var server = net.createServer(function(c){
 			}else{
 				regClientObj[key] = c;
 				regClientKeyObj[genderIPKey(c)] = key;
-				for(var k in regClientObj){
-					regClientObj[k].write("client " + c.remoteAddress + ":" + c.remotePort + " connected");
-				}
+				clientState[key] = "wait for sync";
+				//for(var k in regClientObj){
+					//sendData("client " + c.remoteAddress + ":" + c.remotePort + " connected" , regClientObj[k]);
+				//}
 				console.log("client %s:%s allow connect ..." , c.remoteAddress , c.remotePort);
+			}
+		}
+		// after synced info
+		if(result.type == 3){
+			var state = result.state;
+			var secrue = result.info;
+			var key = secrue.name + "-" + secrue.key;
+			if(state == 0){
+				clientState[key] = "wait for sync";
 			}
 		}
 		//c.write("data:" + data + "\0");
@@ -92,43 +109,47 @@ function genderIPKey(c){
 function addDbToClustersinfo(dbName,clusterInfo){
 	return (clusterInfo + dbName).replace(/,/gim , dbName + ",");
 }
+
 /**
 * looping for sync mongodb
 */
 function syncMongodb(){
 	for(var k in regClientObj){
 		if(regClientObj[k] != null){
-			oplogDao.find({"cluster_name" : k},null,function(err,data){
-				if(!err){
-					var isNew = false;
-					var dao = new oplogDao();
-					if((!data && !data.cluster_name) || data == ""){
-						dao.cluster_name = k;
-						dao.last_flag = 0;	
-						isNew = true;
+			if(clientState[k] === "wait for sync"){
+				oplogDao.find({"cluster_name" : k},null,function(err,data){
+					if(!err){
+						var isNew = false;
+						var dao = new oplogDao();
+						if((!data && !data.cluster_name) || data == ""){
+							dao.cluster_name = k;
+							dao.last_flag = 0;	
+							isNew = true;
+						}
+						dao.cluster_ischanged = false;
+						dao._id = data._id;
+						
+						if(isNew){
+							dao.save(function(err){
+								if(!err){//null
+									startSync(k , dao.last_flag);
+								}
+							});
+						}else{
+							oplogDao.update({_id:dao._id},{cluster_ischanged : false},function(err, numAffected){
+								if(!err){//null:0
+									startSync(k , dao.last_flag);
+								}
+							});
+						}
 					}
-					dao.cluster_ischanged = false;
-					dao._id = data._id;
-					
-					if(isNew){
-						dao.save(function(err){
-							if(!err){//null
-								startSync(k , dao.last_flag);
-							}
-						});
-					}else{
-						oplogDao.update({_id:dao._id},{cluster_ischanged : false},function(err, numAffected){
-							if(!err){//null:0
-								startSync(k , dao.last_flag);
-							}
-						});
-					}
-				}
-			});
+				});
+			}else{
+				console.log(k + " not synced , loop it next time ....");
+			}
 		}
 	}
 }
-
 /**
 * start sync with cluster_name
 */
@@ -143,20 +164,53 @@ function startSync(cluster_name,last_flag){
 	});*/
 	//console.log(cluster_name + "___" + new Timestamp(1,1333091520));
 	/***/
-
+	clientState[cluster_name] = "syncing";	
 	oplogRsDao.find(null , null , {limit : MAXSYNCPER , skip : last_flag} , function(err,data){
 		if(!err){
 			// because of replica set:
 			// i need to disconnect every time ,otherwise , it will throw exception
 			// Error: db object already connecting, open cannot be called multiple times
 			// at Db.open (/cygdrive/e/nodespace/sync-mongodb-cluster/node_modules/mongoose...
-			var result = {type:3,info:data};
-			var buff = new Buffer(JSON.stringify(result), 'utf8');
-			console.log(buff.length + ":" + JSON.stringify(result).length);
-			regClientObj[cluster_name].write(buff);
+			var result = {type:3,info:data};//JSON.stringify(result) + "\\0"
+			//var buff = new Buffer(str+ "\\0", 'utf8');
+			
+			
+			sendData(JSON.stringify(result) , regClientObj[cluster_name] , cluster_name);
+			//var buff = new Buffer(JSON.stringify(result)+ "\\0", 'utf8');
+			//console.log( buff.length + ":" + JSON.stringify(result).length);
+			//regClientObj[cluster_name].write(buff);
 			//regClientObj[cluster_name].write("\0");
 			//console.log(result);
 		}
 	});
 
 }
+/**
+* zip buffer before send to client
+*/
+function sendData(str,client,cluster_name){
+	var buff = new Buffer(str + "\\0", 'utf8');
+	zlib.gzip(buff, function(err, buffer) {
+		if (!err) {
+			console.log("before zip size : %s , after zip size : %s" , buff.length , buffer.length);
+			try{
+				client.write(buffer);
+			}catch(e){
+				//TODO 这里要处理socke断掉的问题
+				console.log(e);
+				regClientObj[cluster_name] = null;
+			}
+		}
+	});
+}
+/**
+			var fs = require('fs');
+			var fileName = "./tmp/" + cluster_name + ".record";
+			var zipFileName = fileName + ".zip";
+			var gzip = zlib.createGzip();
+			fs.writeFile(zipFileName , buffer , function(err){
+				if(!err){
+					console.log("ok");
+					//inp.pipe(gzip).pipe(out);
+				}
+			});*/
