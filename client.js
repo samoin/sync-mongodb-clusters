@@ -41,9 +41,10 @@ client.on("data", function(data){
 	// unzip info ,and append it to clientInfo	
 	zlib.unzip(data, function(err, buffer) {
 	  if (!err) {
-		  //console.log(data.length + ":" + buffer.length);
 		  clientInfo += buffer.toString('utf8',0,buffer.legnth);
 		  solveInfo();
+	  }else{
+			console.log(err);
 	  }
 	});
 });
@@ -55,20 +56,21 @@ client.on("end", function(){
 // solve info 
 function solveInfo(){
 	var tmp = clientInfo.indexOf("\\0");
-	var str = clientInfo.substring(0,tmp);
-	clientInfo = clientInfo.substring(tmp+2,clientInfo.length);
-	//get buff info
-	if(str.length > 1){
-		var obj = eval("(" + str + ")");
-		//sync info
-		if(obj.type == 3){
-			var arr = obj.info;
-			sync_size = arr.length;
-			for(var i=0;i<arr.length;i++){
-				commandArr.push(arr[i]);
+	if(tmp > -1){
+		var str = clientInfo.substring(0,tmp);
+		clientInfo = clientInfo.substring(tmp+2,clientInfo.length);
+		//get buff info
+		if(str.length > 1){
+			var obj = eval("(" + str + ")");
+			//sync info
+			if(obj.type == 3){
+				var arr = obj.info;
+				sync_size = arr.length;
+				for(var i=0;i<arr.length;i++){
+					commandArr.push(arr[i]);
+				}
+				startCommand();
 			}
-			startCommand();
-			
 		}
 	}
 }
@@ -79,6 +81,7 @@ mongodb.Db.connect(cluster_info,function(err, con) {
 var commandArr = [];
 var syncedSize = 0;
 var cmdFlag = true;
+var unExcutedIndexArr = [];
 /**
 * start to submit cmd
 */
@@ -100,24 +103,25 @@ function startCommand(){
 			}
 			var o = oplog.o;//info
 			var o2 = oplog.o2;//info2,when updata ,this appears
-			console.log(o);
 			switch(op){
 				case "c":
 					solveCmd(o,dbs,collections);
 					break;
 				case "i":
-					solveInsert(ns,o);
+					solveInsert(dbs,collections,o);
 					break;
 				case "u":	
-					solveUpdate(ns,o,o2);
+					solveUpdate(dbs,collections,o,o2);
 					break;
 				case "d":	
-					solveDelete(ns,o);
+					solveDelete(dbs,collections,o);
 					break;
 				case "n":	
-					resetSyncedSize2();
+					unExcutedIndexArr.push(oplog.ts);// this command is not excuted , so push it to array
+					resetSyncedSize2(oplog);
 					break;
 				default: 
+					//unExcutedIndexArr.push(oplog);
 					resetSyncedSize();
 				 break;
 			}
@@ -134,7 +138,10 @@ function resetSyncedSize(){
 	if(syncedSize == sync_size){
 		// synced over , record to db
 		syncedSize = 0;
-		client.write('{type:3,state:0,info:' + JSON.stringify(KEY) + '}');
+		client.write('{type:3,state:0,info:' + JSON.stringify(KEY) + ',unExcutedArr:' + JSON.stringify(unExcutedIndexArr) + ',syncCount:' + sync_size +'}');
+		unExcutedIndexArr = [];
+		cmdFlag = true;
+		console.log("waiting for server provide cmd ....");
 	}
 }
 /**
@@ -144,6 +151,7 @@ function resetSyncedSize2(){
 	commandArr.shift();
 	resetSyncedSize();
 }
+var myCollections = {};
 /**
 * command
 */
@@ -172,22 +180,66 @@ function solveCmd(o,dbs,collections){
 /**
 * insert
 */
-function solveInsert(ns,o){
-	mongodb.connect(cluster_info,function(err, conn) {
-			//conn.close(true,function(){console.log("closed db");});
-				resetSyncedSize();
-	});
-	
+function solveInsert(dbs,collections,o){
+	conn.databaseName = dbs;
+	var coll = myCollections[collections];
+	if(!coll){
+		conn.collection(collections,function(err, coll) {
+			myCollections[collections] = coll;
+			insertColl(coll,o);
+		})
+	}else{
+		insertColl(coll,o);
+	}
 }	
+function insertColl(coll,o){
+	coll.insert(o,function(err,result){
+		if(!err){
+			resetSyncedSize2();
+		}
+	});
+}
 /**
 * update
 */
-function solveUpdate(ns,o,o2){
-	resetSyncedSize();
+function solveUpdate(dbs,collections,o,o2){
+	conn.databaseName = dbs;
+	var coll = myCollections[collections];
+	if(!coll){
+		conn.collection(collections,function(err, coll) {
+			myCollections[collections] = coll;
+			updateColl(coll,o,o2);
+		})
+	}else{
+		updateColl(coll,o,o2);
+	}
+}
+function updateColl(coll,o,o2){
+	coll.update(o2 , o ,function(err){
+		if(!err){
+			resetSyncedSize2();
+		}
+	});
 }
 /**
 * delete
 */
-function solveDelete(ns,o){
-	resetSyncedSize();
+function solveDelete(dbs,collections,o){
+	conn.databaseName = dbs;
+	var coll = myCollections[collections];
+	if(!coll){
+		conn.collection(collections,function(err, coll) {
+			myCollections[collections] = coll;
+			removeColl(coll,o);
+		})
+	}else{
+		removeColl(coll,o);
+	}
+}
+function removeColl(coll,o){
+	coll.remove(o,function(err,result){
+		if(!err){
+			resetSyncedSize2();
+		}
+	});
 }
