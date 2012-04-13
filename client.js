@@ -96,7 +96,7 @@ function startCommand(){
 			var tmp = ns.indexOf("\.");
 			var dbs = ns.substring(0,tmp);
 			var collections = ns.substring(tmp+1,ns.length);
-			debugs(dbs);
+			console.log(dbs);
 			if(!isSyncedNamespace(dbs)){
 				return ;
 			}
@@ -178,6 +178,12 @@ function solveCmd(o,dbs,collections){
 			var indexName = o["index"];
 			conn.dropIndex(tableName,indexName,function(err, collection){
 				console.log("drop collection %s" , tableName);
+				resetSyncedSize2();			
+			});
+		}
+		if(o["dropDatabase"]){	// drop database
+			conn.dropDatabase(function(err, collection){
+				console.log("dropDatabase %s" , dbs);
 				resetSyncedSize2();			
 			});
 		}
