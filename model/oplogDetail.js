@@ -5,7 +5,9 @@ OplogSchema = new base.Schema({
 	server_oplog_index_from : {type : Number},
 	server_oplog_index_to : {type : Number},
 	client_oplog_update_count : {type : Number},
-	client_oplog_error_array : {type : String}
+	client_oplog_error_array : {type : String},
+	before_zip : {type : Number},
+	after_zip : {type : Number}
 });
 var modelName = "oplogDetail",
 collName = "oplogDetail";

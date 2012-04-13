@@ -56,6 +56,7 @@ client.on("end", function(){
 // solve info 
 function solveInfo(){
 	var tmp = clientInfo.indexOf("\\0");
+	console.log(clientInfo);
 	if(tmp > -1){
 		var str = clientInfo.substring(0,tmp);
 		clientInfo = clientInfo.substring(tmp+2,clientInfo.length);
@@ -92,12 +93,10 @@ function startCommand(){
 			var oplog = commandArr[0];
 			var op = oplog.op;//command type(c:create , i:insert , u:update , d:delete , n: initiating set)
 			var ns = oplog.ns;//command dbs or collection
-			var arr2 = ns.split(".");
-			var dbs = arr2[0];
-			var collections = "";
-			if(arr2.length == 2){
-				collections = arr2[1];
-			}
+			var tmp = ns.indexOf("\.");
+			var dbs = ns.substring(0,tmp);
+			var collections = ns.substring(tmp+1,ns.length);
+			debugs(dbs);
 			if(!isSyncedNamespace(dbs)){
 				return ;
 			}
@@ -160,25 +159,32 @@ function solveCmd(o,dbs,collections){
 	//	conn.close(true,function(){console.log("closed db");});
 	conn.databaseName = dbs;
 	if(collections === "$cmd"){
-		for(var k in o){
-			var tableName = o[k];
-			if(k === "create"){	
-				conn.createCollection(tableName,{},function(err, collection){
-					console.log("create collection %s" , tableName);
-					resetSyncedSize2();
-				});
-			}
-			if(k === "drop"){	
-				conn.dropCollection(tableName,function(err, collection){
-					console.log("drop collection %s" , tableName);
-					resetSyncedSize2();			
-				});
-			}
+		if(o["create"]){	
+			var tableName = o["create"];
+			conn.createCollection(tableName,{},function(err, collection){
+				console.log("create collection %s" , tableName);
+				resetSyncedSize2();
+			});
+		}
+		if(o["drop"]){	
+			var tableName = o["drop"];
+			conn.dropCollection(tableName,function(err, collection){
+				console.log("drop collection %s" , tableName);
+				resetSyncedSize2();			
+			});
+		}
+		if(o["deleteIndexes"]){	// drop index
+			var tableName = o["deleteIndexes"];
+			var indexName = o["index"];
+			conn.dropIndex(tableName,indexName,function(err, collection){
+				console.log("drop collection %s" , tableName);
+				resetSyncedSize2();			
+			});
 		}
 	}
 }
 /**
-* insert
+* insert documents or index
 */
 function solveInsert(dbs,collections,o){
 	conn.databaseName = dbs;

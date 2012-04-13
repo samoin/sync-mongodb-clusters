@@ -32,6 +32,7 @@ for(var i=0 ; i<KEYS.length ; i++){
 var regClientObj = {};
 var regClientKeyObj = {};
 var regClientLastFlag = {};
+var regClientZipInfo = {};
 
 var debugFlag = false;
 function debugs(){
@@ -86,7 +87,12 @@ var server = net.createServer(function(c){
 						dao.server_oplog_index_to = dao.server_oplog_index_from + syncCount;
 						dao.client_oplog_update_count = syncCount - unExcutedArr.length;
 						dao.client_oplog_error_array = JSON.stringify(unExcutedArr);
-						debugs(dao.cluster_name + ":" + dao.update_time + ":" + dao.server_oplog_index_from + ":" + dao.server_oplog_index_to + ":" + dao.client_oplog_update_count);
+						var zipInfo = regClientZipInfo[key];
+						if(zipInfo){
+							dao.before_zip = zipInfo.before;
+							dao.after_zip = zipInfo.after;
+						}
+						//debugs(dao.cluster_name + ":" + dao.update_time + ":" + dao.server_oplog_index_from + ":" + dao.server_oplog_index_to + ":" + dao.client_oplog_update_count);
 						dao.save(function(err){
 							if(!err){//null
 								debugs("oplogdetail is sited");
@@ -218,6 +224,7 @@ function sendData(str,client,cluster_name){
 	zlib.gzip(buff, function(err, buffer) {
 		if (!err) {
 			console.log("before zip size : %s , after zip size : %s" , buff.length , buffer.length);
+			regClientZipInfo[cluster_name] = {before : buff.length , after : buffer.length };
 			//console.log(str);
 			try{
 				client.write(buffer);
