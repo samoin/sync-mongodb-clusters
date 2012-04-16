@@ -60,7 +60,7 @@ var server = net.createServer(function(c){
 		var result = eval("(" + data + ")");
 		var secrue = result.info;
 		var key = secrue.name + "-" + secrue.key;
-		console.log("client \"" + key + "\" say :\n " + data);
+		debugs("client \"" + key + "\" say :\n " + data);
 		var syncCount = result.syncCount;
 		// first time ,register
 		if(result.type == 1){
@@ -117,7 +117,7 @@ var server = net.createServer(function(c){
 		console.log("server disconnected %s:%s" , c.remoteAddress , c.remotePort);
 	});
 	c.pipe(c);
-	console.log("server connected");
+	debugs("server created");
 });
 //listen server
 server.listen(PORT , HOST , function(){	
@@ -156,7 +156,7 @@ function addDbToClustersinfo(dbName,clusterInfo){
 function syncMongodb(){
 	for(var k in regClientObj){
 		if(regClientObj[k] != null){
-			console.log(clientState[k]);
+			//console.log(clientState[k]);
 			if(clientState[k] === "wait for sync"){
 				oplogDao.find({"cluster_name" : k},null,function(err,data){
 					if(!err){
@@ -204,7 +204,7 @@ function startSync(cluster_name,last_flag){
 	clientState[cluster_name] = "syncing";	
 	debugs(MAXSYNCPER + ":" + last_flag);
 	coll.find().limit(MAXSYNCPER).skip(last_flag).toArray(function(err, data) {
-		console.log(JSON.stringify(data));
+		//console.log(JSON.stringify(data));
 		clientState[cluster_name] = "wait for sync";
 		if(!err){
 			// because of replica set:
