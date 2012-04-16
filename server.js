@@ -15,14 +15,14 @@ var KEYS = config.keys || [];
 var MAXSYNCPER = config.max_sync_count_per || 100;
 var SERVER_CLUSTER = config.server_clusters_info || "";
 var LOOPTIME = config.loop_time || 1;//unit(sec)
+var info_end_split_key = config.info_end_split_key || "\\0";
+var info_type_split_key = config.info_type_split_key || "\\0";
 // mongodb
 var oplog = require("./model/oplog")
 	,oplogDao = oplog.dao;
 var oplogDetail = require("./model/oplogDetail")
 	,oplogDetailDao = oplogDetail.dao;
 var oplogRs = require("./model/oplog.rs");
-oplogRs.mongoose.connectSet(SERVER_CLUSTER);
-oplogRs.mongoose.model(oplogRs.modelName,oplogRs.schema,oplogRs.collName);
 var KEYSOBJ = {};//key:name,val:keyobj
 for(var i=0 ; i<KEYS.length ; i++){
 	var tmp = KEYS[i];
@@ -41,6 +41,12 @@ function debugs(){
 		console.log(arguments);
 	}
 }
+/**
+* add listener to catch uncaughtException , as socket error
+*/
+process.on('uncaughtException', function (err) {
+ console.log('Caught exception: ' + err);
+});
 
 //create server
 var server = net.createServer(function(c){
@@ -193,11 +199,12 @@ function syncMongodb(){
 * start sync with cluster_name
 */
 function startSync(cluster_name,last_flag){
-	var oplogRsDao = oplogRs.mongoose.model(oplogRs.modelName,oplogRs.collName);
+	var coll = oplogRs.getColl();
 	var last_flag = regClientLastFlag[cluster_name];
 	clientState[cluster_name] = "syncing";	
 	debugs(MAXSYNCPER + ":" + last_flag);
-	oplogRsDao.find(null , null , {limit : MAXSYNCPER , skip : last_flag} , function(err,data){
+	coll.find().limit(MAXSYNCPER).skip(last_flag).toArray(function(err, data) {
+		console.log(JSON.stringify(data));
 		clientState[cluster_name] = "wait for sync";
 		if(!err){
 			// because of replica set:
@@ -209,7 +216,6 @@ function startSync(cluster_name,last_flag){
 				sendData(JSON.stringify(result) , regClientObj[cluster_name] , cluster_name);
 			}else{
 				clientState[cluster_name] === "wait for sync";
-				
 				console.log("client \"%s\"  synced all info over ,wait for next change ...", cluster_name);
 			}
 		}
@@ -220,7 +226,7 @@ function startSync(cluster_name,last_flag){
 * zip buffer before send to client
 */
 function sendData(str,client,cluster_name){
-	var buff = new Buffer(str + "\\0", 'utf8');
+	var buff = new Buffer(str + info_end_split_key, 'utf8');
 	zlib.gzip(buff, function(err, buffer) {
 		if (!err) {
 			console.log("before zip size : %s , after zip size : %s" , buff.length , buffer.length);

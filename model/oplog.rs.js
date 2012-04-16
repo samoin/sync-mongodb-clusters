@@ -1,22 +1,27 @@
-var mongoose = require('mongoose2'),  
-    Schema = mongoose.Schema,  
-    ObjectId = Schema.ObjectId;  
-var OplogSchema = new mongoose.Schema({
-	ts : {type : Number},
-	h : {type : Number},
-	op : {type : String},
-	ns : {type : String},
-	o : {type : Schema.Types.Mixed},
-	o2 : {type : Schema.Types.Mixed}
+var mongodb = require('mongodb');
+var config = require("../server.config");
+var server_clusters_info = config.server_clusters_info || "";
+var conn;
+var coll;
+mongodb.Db.connect(server_clusters_info,function(err, con) {
+	if(!err){
+		conn = con;
+		conn.databaseName = "local";
+		console.log("server cluster connection inited ....");
+		conn.collection("oplog.rs", function(err2, col) {
+			if(!err2){
+				coll = col;
+				console.log("server cluster - collection(oplog.rs) inited ....");
+			}
+		});
+	}
 });
-var modelName = "oplog.rs",
-        collName = "oplog.rs";
-//mongoose.model(modelName,OplogSchema,collName);
-//var Model = mongoose.model(modelName,collName);
-//exports.dao = Model;
-// 将参数继续暴露给后续的进行引用，减少require代码
-//exports.mongouris = "";
-exports.schema = OplogSchema;
-exports.modelName = modelName;
-exports.collName = collName;
-exports.mongoose = mongoose;
+
+
+exports.getConn = function(){
+	return conn;
+}
+
+exports.getColl = function(){
+	return coll;
+}

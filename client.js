@@ -1,12 +1,12 @@
 var net = require("net");
-var mongoose = require('mongoose');
-var repl_set_servers = require("mongodb/lib/mongodb/connection/repl_set_servers");
 var mongodb = require('mongodb');
 var config = require("./client.config");
 var PORT = config.server_port || 8081;
 var HOST = config.server_host || "127.0.0.1";
 var KEY = config.secure_key || {};
 var cluster_info = config.cluster_info || "";
+var info_end_split_key = config.info_end_split_key || "\\0";
+var info_type_split_key = config.info_type_split_key || "\\1";
 var clientName = KEY.name + "-" + KEY.key;
 var client = new net.Socket();
 var clientInfo = "";
@@ -55,7 +55,7 @@ client.on("end", function(){
 
 // solve info 
 function solveInfo(){
-	var tmp = clientInfo.indexOf("\\0");
+	var tmp = clientInfo.indexOf(info_end_split_key);
 	console.log(clientInfo);
 	if(tmp > -1){
 		var str = clientInfo.substring(0,tmp);
