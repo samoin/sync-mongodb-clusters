@@ -8,10 +8,12 @@ var clientState = {};
 // net
 var net = require("net")
 	,sys = require("sys");
+var common_code = "utf8";
 var config = require("./server.config") || {};
 var PORT = config.port || 8081;
 var HOST = config.host || "127.0.0.1";
 var KEYS = config.keys || [];
+var info_limit_size = config.info_limit_size || 1024;
 var MAXSYNCPER = config.max_sync_count_per || 100;
 var SERVER_CLUSTER = config.server_clusters_info || "";
 var LOOPTIME = config.loop_time || 1;//unit(sec)
@@ -43,72 +45,102 @@ function debugs(){
 }
 /**
 * add listener to catch uncaughtException , as socket error
-*/
+
 process.on('uncaughtException', function (err) {
  console.log('Caught exception: ' + err);
 });
-
+*/
+function solveInfo(data,c){
+	//type: {1:secrue,2:msg,3:syncInfo,4:client synced,5:askSecrue},info:{}
+	var result = eval("(" + data + ")");
+	var secrue = result.info;
+	var key = secrue.name + "-" + secrue.key;
+	//console.log("client \"" + key + "\" say :\n " + data);
+	var syncCount = result.syncCount;
+	// first time ,register
+	if(result.type == 1){
+		
+		if(!KEYSOBJ[key]){//secrue key error
+			c.destroy();
+			console.log("client %s:%s not allow connect, it's without secrue key ..." , c.remoteAddress , c.remotePort);
+		}else if (regClientObj[key]){//secrue key used
+			c.destroy();
+			console.log("client %s:%s not allow connect, secrue key is in used ..." , c.remoteAddress , c.remotePort);
+		}else{
+				regClientObj[key] = c;
+				if(c){
+					regClientKeyObj[genderIPKey(c)] = key;
+					console.log("client %s:%s allow connect ..." , c.remoteAddress , c.remotePort);
+				}
+				clientState[key] = "wait for sync";
+		}
+	}
+	// after synced info
+	if(result.type == 4){
+		var state = result.state;
+		if(state == 0){
+			clientState[key] = "wait for sync";
+			var unExcutedArr = result.unExcutedArr;
+			// resize synced size
+			oplogDao.update({"cluster_name" : key}, {$inc:{last_flag:syncCount}}, function(err, numAffected){
+				if(!err){
+					var dao = new oplogDetailDao();
+					dao.cluster_name = key;
+					dao.update_time = new Date();	
+					dao.server_oplog_index_from = parseInt(regClientLastFlag[key]);
+					dao.server_oplog_index_to = dao.server_oplog_index_from + syncCount;
+					dao.client_oplog_update_count = syncCount - unExcutedArr.length;
+					dao.client_oplog_error_array = JSON.stringify(unExcutedArr);
+					var zipInfo = regClientZipInfo[key];
+					if(zipInfo){
+						dao.before_zip = zipInfo.before;
+						dao.after_zip = zipInfo.after;
+					}
+					//debugs(dao.cluster_name + ":" + dao.update_time + ":" + dao.server_oplog_index_from + ":" + dao.server_oplog_index_to + ":" + dao.client_oplog_update_count);
+					dao.save(function(err){
+						if(!err){//null
+							debugs("oplogdetail is sited");
+							clientState[key] = "wait for sync";
+						}
+					});
+				}
+			});
+		}
+	}
+}
 //create server
 var server = net.createServer(function(c){
-	c.setEncoding("utf8");
+	c.setEncoding(common_code);
 	c.bufferSize = 16;
 	c.on("connect",function(){
 		console.log("client %s:%s connected, waiting for registe secrue key ..." , c.remoteAddress , c.remotePort);
+		sendData("{type:5}",c);
 	});
 	c.on("data",function(data){
-		//type: {1:secrue,2:msg,3:syncInfo},info:{}
-		var result = eval("(" + data + ")");
-		var secrue = result.info;
-		var key = secrue.name + "-" + secrue.key;
-		debugs("client \"" + key + "\" say :\n " + data);
-		var syncCount = result.syncCount;
-		// first time ,register
-		if(result.type == 1){
-			if(!KEYSOBJ[key]){//secrue key error
-				c.destroy();
-				console.log("client %s:%s not allow connect, it's without secrue key ..." , c.remoteAddress , c.remotePort);
-			}else if (regClientObj[key]){//secrue key used
-				c.destroy();
-				console.log("client %s:%s not allow connect, secrue key is in used ..." , c.remoteAddress , c.remotePort);
-			}else{
-				regClientObj[key] = c;
-				regClientKeyObj[genderIPKey(c)] = key;
-				clientState[key] = "wait for sync";
-				console.log("client %s:%s allow connect ..." , c.remoteAddress , c.remotePort);
-			}
+		if(!Buffer.isBuffer(data)){
+			data = new Buffer(data,common_code);
 		}
-		// after synced info
-		if(result.type == 3){
-			var state = result.state;
-			if(state == 0){
-				clientState[key] = "wait for sync";
-				var unExcutedArr = result.unExcutedArr;
-				// resize synced size
-				oplogDao.update({"cluster_name" : key}, {$inc:{last_flag:syncCount}}, function(err, numAffected){
-					if(!err){
-						var dao = new oplogDetailDao();
-						dao.cluster_name = key;
-						dao.update_time = new Date();	
-						dao.server_oplog_index_from = parseInt(regClientLastFlag[key]);
-						dao.server_oplog_index_to = dao.server_oplog_index_from + syncCount;
-						dao.client_oplog_update_count = syncCount - unExcutedArr.length;
-						dao.client_oplog_error_array = JSON.stringify(unExcutedArr);
-						var zipInfo = regClientZipInfo[key];
-						if(zipInfo){
-							dao.before_zip = zipInfo.before;
-							dao.after_zip = zipInfo.after;
-						}
-						//debugs(dao.cluster_name + ":" + dao.update_time + ":" + dao.server_oplog_index_from + ":" + dao.server_oplog_index_to + ":" + dao.client_oplog_update_count);
-						dao.save(function(err){
-							if(!err){//null
-								debugs("oplogdetail is sited");
-								clientState[key] = "wait for sync";
-							}
-						});
-					}
-				});
-			}
+		var typeBuff = data.slice(0,type_len);
+		lastType = typeBuff.toString(common_code,0,typeBuff.length);
+		// i always get info that client send to server,so strange,here need to solve
+		var	infoLenBuff = data.slice(type_len,base_info_len);
+		infoLen = Number(infoLenBuff.toString(common_code,0,infoLenBuff.length));
+		var infoBuff = data.slice(base_info_len,base_info_len + infoLen);
+		if(lastType == type_zip){
+			zlib.gunzip(infoBuff, function(err, buffer) {
+				if (!err) {
+					var info = buffer.toString(common_code,0,buffer.legnth);
+					solveInfo(info,c);
+				}else{
+					console.log(err);
+				}
+			});
 		}
+		if(lastType == type_normal){
+			var info = infoBuff.toString(common_code,0,infoBuff.length);
+			solveInfo(info,c);
+		}
+		
 	});
 	c.on("end",function(){
 		// reset key in regClientObj to null
@@ -117,7 +149,7 @@ var server = net.createServer(function(c){
 		console.log("server disconnected %s:%s" , c.remoteAddress , c.remotePort);
 	});
 	c.pipe(c);
-	debugs("server created");
+	console.log("server connected");
 });
 //listen server
 server.listen(PORT , HOST , function(){	
@@ -156,7 +188,6 @@ function addDbToClustersinfo(dbName,clusterInfo){
 function syncMongodb(){
 	for(var k in regClientObj){
 		if(regClientObj[k] != null){
-			//console.log(clientState[k]);
 			if(clientState[k] === "wait for sync"){
 				oplogDao.find({"cluster_name" : k},null,function(err,data){
 					if(!err){
@@ -199,12 +230,15 @@ function syncMongodb(){
 * start sync with cluster_name
 */
 function startSync(cluster_name,last_flag){
+	if(coll){
+		console.log("connection initing....");
+		return;
+	}
 	var coll = oplogRs.getColl();
 	var last_flag = regClientLastFlag[cluster_name];
 	clientState[cluster_name] = "syncing";	
 	debugs(MAXSYNCPER + ":" + last_flag);
 	coll.find().limit(MAXSYNCPER).skip(last_flag).toArray(function(err, data) {
-		//console.log(JSON.stringify(data));
 		clientState[cluster_name] = "wait for sync";
 		if(!err){
 			// because of replica set:
@@ -222,23 +256,63 @@ function startSync(cluster_name,last_flag){
 	});
 
 }
+var type_normal = 1;
+var type_zip = 2;
+var type_len = 1;
+var info_length_len = 12;
+var base_info_len = type_len + info_length_len;
+var Buffer = require("buffer").Buffer;
+var cache_buff = new Buffer("");
+var lastType = 1;
+var infoLen = 0;
+var lastCopyStart = 0;
+var isDecoding = false;
+var common_code = "utf8";
 /**
 * zip buffer before send to client
 */
 function sendData(str,client,cluster_name){
-	var buff = new Buffer(str + info_end_split_key, 'utf8');
-	zlib.gzip(buff, function(err, buffer) {
-		if (!err) {
-			console.log("before zip size : %s , after zip size : %s" , buff.length , buffer.length);
-			regClientZipInfo[cluster_name] = {before : buff.length , after : buffer.length };
-			//console.log(str);
-			try{
-				client.write(buffer);
-			}catch(e){
-				//TODO 这里要处理socke断掉的问题
-				console.log(e);
-				regClientObj[cluster_name] = null;
+	var buff = new Buffer(str, 'utf8');
+	if(buff.length > info_limit_size){
+		zlib.gzip(buff, function(err, buffer) {
+			if (!err) {
+				sendData2(str,client,cluster_name,buff,buffer,type_zip);
 			}
+		});
+	}else{
+		sendData2(str,client,cluster_name,buff,buff,type_normal);
+	}
+}
+function sendData2(str,client,cluster_name,buff,buffer,type){
+	console.log("before zip size : %s , after zip size : %s" , buff.length , buffer.length);
+	var msgInfo = type + "" + getLen(buffer,type == type_normal?str.length:null);
+	var tmp = new Buffer(msgInfo, common_code);
+	if(cluster_name){
+		regClientZipInfo[cluster_name] = {before : buff.length , after : buffer.length };
+	}
+	// i don't know why :
+	// from client when i sendData to server as Buffer , i't can't reach , but client get this message ,
+	// but if change this to String , server can get it , strange...
+	// maybe client is disconnected here , have to solve this problem
+	if(type === type_normal){
+		client.write(msgInfo + str);
+	}else{
+		client.write(tmp);
+		client.write(buffer);
+	}
+}
+function getLen(buffer,len){
+	if(!len){
+		len = buffer.length;
+	}
+	len += "";
+	var len2 = len.length;
+	if(info_length_len > len2){
+		var str = "";
+		for(var i=0;i<info_length_len - len2;i++){
+			str += "0";
 		}
-	});
+		len = str + len;
+	}
+	return len;
 }

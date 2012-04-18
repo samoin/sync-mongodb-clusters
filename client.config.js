@@ -13,5 +13,6 @@ module.exports = {
 	info_end_split_key : "\\0",
 	info_type_split_key : "\\1",
 	cluster_info : "mongodb://127.0.0.1:47017,127.0.0.1:47018,127.0.0.1:47019",//
-	secure_key : {name : "ty2" , key : "1234567890ty2"}
+	secure_key : {name : "ty2" , key : "1234567890ty2"},
+	sync_db_namespace : "test"
 };

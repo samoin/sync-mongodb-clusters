@@ -32,53 +32,139 @@ function syncInfo(func){
 
 }
 
-client.connect(PORT , HOST , function(){
-	console.log("client connected to server %s:%s" , HOST , PORT);
-	//send secure info
-	client.write('{type:1,info:' + JSON.stringify(KEY) + '}');
-});
-client.on("data", function(data){
-	// unzip info ,and append it to clientInfo	
-	zlib.unzip(data, function(err, buffer) {
-	  if (!err) {
-		  clientInfo += buffer.toString('utf8',0,buffer.legnth);
-		  solveInfo();
-	  }else{
-			console.log(err);
-	  }
+var conn ;
+mongodb.Db.connect(cluster_info,function(err, con) {
+	conn = con;
+	client.connect(PORT , HOST , function(){
+		console.log("client connected to server %s:%s" , HOST , PORT);
 	});
 });
+var type_normal = 1;
+var type_zip = 2;
+var type_len = 1;
+var info_length_len = 12;
+var base_info_len = type_len + info_length_len;
+var Buffer = require("buffer").Buffer;
+var cache_buff = new Buffer("");
+var lastType = 1;
+var infoLen = 0;
+var lastCopyStart = 0;
+var isDecoding = false;
+var common_code = "utf8";
+var Buffer = require("buffer").Buffer;
+var dataBuff = [];
+var isSolving = false;
+client.on("data", function(data){
+	//console.log("data %s,%s,%s",dataBuff.length,data.length,"");//data
+	if(!Buffer.isBuffer(data)){
+		data = new Buffer(data,common_code);
+	}
+	pushData(data);
+});
+
+function pushData(data){
+	dataBuff.push(data);
+	if(!isSolving){
+		solveData();
+	}	
+}
+
+function solveData(){
+	isSolving = true;
+	if(dataBuff.length > 0){
+		var data = dataBuff[0];
+		var buffLen = data.length;
+		var typeBuff = data.slice(0,type_len);
+		lastType = typeBuff.toString(common_code,0,buffLen);
+		// i always get info that client send to server,so strange,here need to solve
+		var	infoLenBuff = data.slice(type_len,base_info_len);
+		infoLen = Number(infoLenBuff.toString(common_code,0,infoLenBuff.length));
+		var curInfoLen = buffLen - infoLenBuff;
+		var expectLen = base_info_len + infoLen;
+		// info not all recived
+		if(expectLen > buffLen){
+			if(dataBuff.length > 1){
+				var data2 = dataBuff[1];
+				var data2Len = data2.length;
+				// merged buff index 0 and 1 to index 0
+				var mergedBuff = new Buffer(buffLen + data2Len);
+				//console.log("datalen : %s,data2len : %s,data: %s,data2: %s",buffLen,data2Len,data,data2);
+				data.copy(mergedBuff,0,0,buffLen);
+				data2.copy(mergedBuff,buffLen,buffLen,buffLen + data2Len);
+				//console.log("before1 shift : %s" , dataBuff.length);
+				dataBuff.shift();//remove index 0 
+				dataBuff.shift();//remove index 1 
+				//console.log("after1 shift : %s" , dataBuff.length);
+				dataBuff.unshift(mergedBuff);//put mergedBuff to index 0 
+				//console.log("after1 unshift : %s" , dataBuff.length);
+				isSolving = false;
+				solveData();
+			}else{
+				isSolving = false;
+			}
+		}else{
+			var infoBuff = data.slice(base_info_len,expectLen);
+			//console.log("before shift : %s,expectLen : %s,buffLen : %s" , dataBuff.length,expectLen,buffLen);
+			dataBuff.shift();//remove index 0 
+			if(expectLen < buffLen){
+				var releasedBuff = new Buff(buffLen - expectLen);
+				data.copy(releasedBuff,expectLen,expectLen,buffLen);
+				dataBuff.unshift(releasedBuff);//put releasedBuff to index 0 
+			}
+			//console.log("after shift : %s" , dataBuff.length);
+			solveData2(infoBuff,lastType);
+		}
+	}else{
+		isSolving = false;
+	}
+}
+function solveData2(infoBuff,lastType){
+	if(lastType == type_zip){
+		zlib.gunzip(infoBuff, function(err, buffer) {
+			if (!err) {
+				solveInfo(buffer);
+				isSolving = false;
+				solveData();
+			}else{
+				console.log(err);
+			}
+		});
+	}
+	if(lastType == type_normal){
+		solveInfo(infoBuff);
+		isSolving = false;
+		solveData();
+	}
+}
+
 //client.bufferSize = 16;
 client.on("end", function(){
 	console.log("client disconnected");
 });
 
 // solve info 
-function solveInfo(){
-	var tmp = clientInfo.indexOf(info_end_split_key);
-	console.log(clientInfo);
-	if(tmp > -1){
-		var str = clientInfo.substring(0,tmp);
-		clientInfo = clientInfo.substring(tmp+2,clientInfo.length);
-		//get buff info
-		if(str.length > 1){
-			var obj = eval("(" + str + ")");
-			//sync info
-			if(obj.type == 3){
-				var arr = obj.info;
-				sync_size = arr.length;
-				for(var i=0;i<arr.length;i++){
-					commandArr.push(arr[i]);
-				}
-				startCommand();
-			}
+function solveInfo(str){
+	if(Buffer.isBuffer(str)){
+		str = str.toString(common_code,0,str.legnth);
+	}
+	//console.log(str);
+	var obj = eval("(" + str + ")");
+	//answer asking secure
+	if(obj.type == 5){
+		//send secure info
+		sendData('{type:1,info:' + JSON.stringify(KEY) + '}');
+	}
+	//sync info
+	if(obj.type == 3){
+		var arr = obj.info;
+		sync_size = arr.length;
+		for(var i=0;i<arr.length;i++){
+			commandArr.push(arr[i]);
 		}
+		startCommand();
 	}
 }
-var conn ;
-mongodb.Db.connect(cluster_info,function(err, con) {
-	conn = con;
-});
+
 var commandArr = [];
 var syncedSize = 0;
 var cmdFlag = true;
@@ -96,8 +182,13 @@ function startCommand(){
 			var tmp = ns.indexOf("\.");
 			var dbs = ns.substring(0,tmp);
 			var collections = ns.substring(tmp+1,ns.length);
-			console.log(dbs);
+			//console.log(dbs + ":" + isSyncedNamespace(dbs));
 			if(!isSyncedNamespace(dbs)){
+				unExcutedIndexArr.push(oplog.ts);// this command is not excuted , so push it to array
+				syncedSize++;
+				commandArr.shift();
+				cmdFlag = true;
+				startCommand();
 				return ;
 			}
 			var o = oplog.o;//info
@@ -137,7 +228,7 @@ function resetSyncedSize(){
 	if(syncedSize == sync_size){
 		// synced over , record to db
 		syncedSize = 0;
-		client.write('{type:3,state:0,info:' + JSON.stringify(KEY) + ',unExcutedArr:' + JSON.stringify(unExcutedIndexArr) + ',syncCount:' + sync_size +'}');
+		sendData('{type:4,state:0,info:' + JSON.stringify(KEY) + ',unExcutedArr:' + JSON.stringify(unExcutedIndexArr) + ',syncCount:' + sync_size +'}');
 		unExcutedIndexArr = [];
 		cmdFlag = true;
 		console.log("waiting for server provide cmd ....");
@@ -254,4 +345,26 @@ function removeColl(coll,o){
 			resetSyncedSize2();
 		}
 	});
+}
+
+function sendData(str){
+	var buff = new Buffer(str, 'utf8');
+	var msgInfo = type_normal + "" + getLen(buff,str.length);
+	var tmp = new Buffer(msgInfo, common_code);
+	client.write(msgInfo + str);
+}
+function getLen(buffer,len){
+	if(!len){
+		len = buffer.length;
+	}
+	len += "";
+	var len2 = len.length;
+	if(info_length_len > len2){
+		var str = "";
+		for(var i=0;i<info_length_len - len2;i++){
+			str += "0";
+		}
+		len = str + len;
+	}
+	return len;
 }
