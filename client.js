@@ -5,8 +5,6 @@ var PORT = config.server_port || 8081;
 var HOST = config.server_host || "127.0.0.1";
 var KEY = config.secure_key || {};
 var cluster_info = config.cluster_info || "";
-var info_end_split_key = config.info_end_split_key || "\\0";
-var info_type_split_key = config.info_type_split_key || "\\1";
 var clientName = KEY.name + "-" + KEY.key;
 var client = new net.Socket();
 var clientInfo = "";
@@ -26,10 +24,6 @@ function isSyncedNamespace(namespace){
 		return true;
 	}
 	return false;
-}
-
-function syncInfo(func){
-
 }
 
 var conn ;
@@ -54,8 +48,11 @@ var common_code = "utf8";
 var Buffer = require("buffer").Buffer;
 var dataBuff = [];
 var isSolving = false;
+
+
 client.on("data", function(data){
-	//console.log("data %s,%s,%s",dataBuff.length,data.length,"");//data
+	//console.log("data %s,",data);//data
+	//console.log("get data");
 	if(!Buffer.isBuffer(data)){
 		data = new Buffer(data,common_code);
 	}
@@ -88,9 +85,14 @@ function solveData(){
 				var data2Len = data2.length;
 				// merged buff index 0 and 1 to index 0
 				var mergedBuff = new Buffer(buffLen + data2Len);
-				//console.log("datalen : %s,data2len : %s,data: %s,data2: %s",buffLen,data2Len,data,data2);
+				// maybe this message too big ,need to recive at servral times
 				data.copy(mergedBuff,0,0,buffLen);
-				data2.copy(mergedBuff,buffLen,buffLen,buffLen + data2Len);
+				var needEnd = buffLen + data2Len;
+				if(needEnd > data2Len){
+					needEnd = data2Len;
+				}
+				data2.copy(mergedBuff,buffLen,0,needEnd);
+				console.log("concating info ... ");
 				//console.log("before1 shift : %s" , dataBuff.length);
 				dataBuff.shift();//remove index 0 
 				dataBuff.shift();//remove index 1 
@@ -107,7 +109,7 @@ function solveData(){
 			//console.log("before shift : %s,expectLen : %s,buffLen : %s" , dataBuff.length,expectLen,buffLen);
 			dataBuff.shift();//remove index 0 
 			if(expectLen < buffLen){
-				var releasedBuff = new Buff(buffLen - expectLen);
+				var releasedBuff = new Buffer(buffLen - expectLen);
 				data.copy(releasedBuff,expectLen,expectLen,buffLen);
 				dataBuff.unshift(releasedBuff);//put releasedBuff to index 0 
 			}
@@ -284,6 +286,7 @@ function solveCmd(o,dbs,collections){
 * insert documents or index
 */
 function solveInsert(dbs,collections,o){
+	console.log("database[%s] > collection[%s] inserting " ,dbs,collections);
 	conn.databaseName = dbs;
 	var coll = myCollections[collections];
 	if(!coll){
@@ -306,6 +309,7 @@ function insertColl(coll,o){
 * update
 */
 function solveUpdate(dbs,collections,o,o2){
+	console.log("database[%s] > collection[%s] updating " ,dbs,collections);
 	conn.databaseName = dbs;
 	var coll = myCollections[collections];
 	if(!coll){
@@ -328,6 +332,7 @@ function updateColl(coll,o,o2){
 * delete
 */
 function solveDelete(dbs,collections,o){
+	console.log("database[%s] > collection[%s] deleting %s" ,dbs,collections, JSON.stringify(o));
 	conn.databaseName = dbs;
 	var coll = myCollections[collections];
 	if(!coll){
@@ -348,7 +353,7 @@ function removeColl(coll,o){
 }
 
 function sendData(str){
-	var buff = new Buffer(str, 'utf8');
+	var buff = new Buffer(str, common_code);
 	var msgInfo = type_normal + "" + getLen(buff,str.length);
 	var tmp = new Buffer(msgInfo, common_code);
 	client.write(msgInfo + str);

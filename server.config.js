@@ -13,14 +13,12 @@ module.exports = {
 	port : 8081,
 	host : "127.0.0.1",
 	loop_time : 1,
-	max_sync_count_per : 3,
-	info_end_split_key : "\\0",
-	info_type_split_key : "\\1",
+	max_sync_count_per : 100,
 	info_limit_size : 128,
 	keys : [
 			{name : "ty2" , key : "1234567890ty2"},
 			{name : "sh" , key : "9876543210sh"}
 			],
-	server_clusters_info : "mongodb://127.0.0.1:47011,127.0.0.1:47012",
-	server_db_info : "mongodb://127.0.0.1:47020/node"
+	server_clusters_info : "mongodb://172.16.9.117:47011,172.16.9.117:47012",
+	server_db_info : "mongodb://172.16.9.117:47020/node"
 };

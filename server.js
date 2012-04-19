@@ -17,8 +17,6 @@ var info_limit_size = config.info_limit_size || 1024;
 var MAXSYNCPER = config.max_sync_count_per || 100;
 var SERVER_CLUSTER = config.server_clusters_info || "";
 var LOOPTIME = config.loop_time || 1;//unit(sec)
-var info_end_split_key = config.info_end_split_key || "\\0";
-var info_type_split_key = config.info_type_split_key || "\\0";
 // mongodb
 var oplog = require("./model/oplog")
 	,oplogDao = oplog.dao;
@@ -188,7 +186,7 @@ function addDbToClustersinfo(dbName,clusterInfo){
 function syncMongodb(){
 	for(var k in regClientObj){
 		if(regClientObj[k] != null){
-			if(clientState[k] === "wait for sync"){
+			if(clientState[k] == "wait for sync"){
 				oplogDao.find({"cluster_name" : k},null,function(err,data){
 					if(!err){
 						var isNew = false;
@@ -221,6 +219,7 @@ function syncMongodb(){
 					}
 				});
 			}else{
+				console.log(clientState[k]);
 				console.log(k + " not synced , loop it next time ....");
 			}
 		}
@@ -239,23 +238,26 @@ function startSync(cluster_name,last_flag){
 	clientState[cluster_name] = "syncing";	
 	debugs(MAXSYNCPER + ":" + last_flag);
 	coll.find().limit(MAXSYNCPER).skip(last_flag).toArray(function(err, data) {
-		clientState[cluster_name] = "wait for sync";
 		if(!err){
 			// because of replica set:
 			// i need to disconnect every time ,otherwise , it will throw exception
 			// Error: db object already connecting, open cannot be called multiple times
 			// at Db.open (/cygdrive/e/nodespace/sync-mongodb-cluster/node_modules/mongoose...
+			console.log("last_flag:%s , %s",last_flag,data.length);
 			if(data.length > 0){
 				var result = {type:3,info:data};
+				console.log("sending sync info to client \"%s\"",cluster_name);
 				sendData(JSON.stringify(result) , regClientObj[cluster_name] , cluster_name);
 			}else{
-				clientState[cluster_name] === "wait for sync";
+				clientState[cluster_name] = "wait for sync";
 				console.log("client \"%s\"  synced all info over ,wait for next change ...", cluster_name);
 			}
 		}
 	});
 
 }
+
+
 var type_normal = 1;
 var type_zip = 2;
 var type_len = 1;

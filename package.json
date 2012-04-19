@@ -4,7 +4,7 @@
   },
   "name": "sync-mongodb-cluster",
   "description": "sync mongodb-cluster",
-  "version": "0.0.2",
+  "version": "0.0.8",
   "repository": {
     "url": ""
   },
@@ -21,7 +21,7 @@
     "name": "samoin",
     "email": "gigi_ly180@sohu.com"
   },
-  "_id": "sync-mongodb-cluster@0.0.2",
+  "_id": "sync-mongodb-cluster@0.0.5",
   "scripts": {
     "start": "node server.js"
   },
