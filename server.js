@@ -45,11 +45,11 @@ function debugs(){
 }
 /**
 * add listener to catch uncaughtException , as socket error
-
+*/
 process.on('uncaughtException', function (err) {
  console.log('Caught exception: ' + err);
 });
-*/
+
 function solveInfo(data,c){
 	//type: {1:secrue,2:msg,3:syncInfo,4:client synced,5:askSecrue},info:{}
 	var result = eval("(" + data + ")");
