@@ -1,7 +1,7 @@
 var base = require("./base");
 OplogSchema = new base.Schema({
 	cluster_name : {type : String},
-	last_flag : {type : Number},
+	last_flag : {type : String},
 	cluster_ischanged : {type : Boolean}
 });
 var modelName = "oplog",

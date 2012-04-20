@@ -31,7 +31,8 @@ for(var i=0 ; i<KEYS.length ; i++){
 // registed clientObjects
 var regClientObj = {};
 var regClientKeyObj = {};
-var regClientLastFlag = {};
+var regClientFromFlag = {};
+var regClientToFlag = {};
 var regClientZipInfo = {};
 
 var debugFlag = false;
@@ -80,13 +81,13 @@ function solveInfo(data,c){
 			clientState[key] = "wait for sync";
 			var unExcutedArr = result.unExcutedArr;
 			// resize synced size
-			oplogDao.update({"cluster_name" : key}, {$inc:{last_flag:syncCount}}, function(err, numAffected){
+			oplogDao.update({"cluster_name" : key}, {$set:{last_flag : regClientToFlag[key]}}, function(err, numAffected){
 				if(!err){
 					var dao = new oplogDetailDao();
 					dao.cluster_name = key;
 					dao.update_time = new Date();	
-					dao.server_oplog_index_from = parseInt(regClientLastFlag[key]);
-					dao.server_oplog_index_to = dao.server_oplog_index_from + syncCount;
+					dao.server_oplog_ts_from = regClientFromFlag[key];
+					dao.server_oplog_ts_to = regClientToFlag[key];
 					dao.client_oplog_update_count = syncCount - unExcutedArr.length;
 					dao.client_oplog_error_array = JSON.stringify(unExcutedArr);
 					var zipInfo = regClientZipInfo[key];
@@ -97,6 +98,7 @@ function solveInfo(data,c){
 					//debugs(dao.cluster_name + ":" + dao.update_time + ":" + dao.server_oplog_index_from + ":" + dao.server_oplog_index_to + ":" + dao.client_oplog_update_count);
 					dao.save(function(err){
 						if(!err){//null
+							regClientFromFlag[key] = regClientToFlag[key];
 							debugs("oplogdetail is sited");
 							clientState[key] = "wait for sync";
 						}
@@ -204,15 +206,13 @@ function syncMongodb(){
 						if(isNew){
 							dao.save(function(err){
 								if(!err){//null
-									regClientLastFlag[k] = 0;
 									startSync(k , dao.last_flag);
 								}
 							});
 						}else{
 							oplogDao.update({_id:dao._id},{cluster_ischanged : false},function(err, numAffected){
 								if(!err){//null:0
-									regClientLastFlag[k] = data.last_flag;
-									startSync(k , dao.last_flag);
+									startSync(k , data.last_flag);
 								}
 							});
 						}
@@ -225,26 +225,29 @@ function syncMongodb(){
 		}
 	}
 }
+var Timestamp = require('mongodb').Timestamp;
 /**
 * start sync with cluster_name
 */
 function startSync(cluster_name,last_flag){
+	regClientFromFlag[cluster_name] = last_flag;
 	if(coll){
 		console.log("connection initing....");
 		return;
 	}
 	var coll = oplogRs.getColl();
-	var last_flag = regClientLastFlag[cluster_name];
 	clientState[cluster_name] = "syncing";	
-	debugs(MAXSYNCPER + ":" + last_flag);
-	coll.find().limit(MAXSYNCPER).skip(last_flag).toArray(function(err, data) {
+	coll.find({ts : {$gt : Timestamp.fromString(last_flag)}}).sort({ts : 1}).limit(MAXSYNCPER).toArray(function(err, data) {
 		if(!err){
 			// because of replica set:
 			// i need to disconnect every time ,otherwise , it will throw exception
 			// Error: db object already connecting, open cannot be called multiple times
 			// at Db.open (/cygdrive/e/nodespace/sync-mongodb-cluster/node_modules/mongoose...
-			console.log("last_flag:%s , %s",last_flag,data.length);
-			if(data.length > 0){
+			var dataLen = data.length;
+			if(dataLen > 0){
+				regClientFromFlag[cluster_name] = data[0].ts.toString();
+				regClientToFlag[cluster_name] = data[dataLen - 1].ts.toString();
+				//console.log("last_flag from :%s , to : %s",last_flag,regClientToFlag[cluster_name]);
 				var result = {type:3,info:data};
 				console.log("sending sync info to client \"%s\"",cluster_name);
 				sendData(JSON.stringify(result) , regClientObj[cluster_name] , cluster_name);

@@ -2,8 +2,8 @@ var base = require("./base");
 OplogSchema = new base.Schema({
 	cluster_name : {type : String},
 	update_time : {type : Date},
-	server_oplog_index_from : {type : Number},
-	server_oplog_index_to : {type : Number},
+	server_oplog_ts_from : {type : String},
+	server_oplog_ts_to : {type : String},
 	client_oplog_update_count : {type : Number},
 	client_oplog_error_array : {type : String},
 	before_zip : {type : Number},

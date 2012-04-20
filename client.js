@@ -184,9 +184,10 @@ function startCommand(){
 			var tmp = ns.indexOf("\.");
 			var dbs = ns.substring(0,tmp);
 			var collections = ns.substring(tmp+1,ns.length);
+			var tsInfo = oplog.ts.toString();
 			//console.log(dbs + ":" + isSyncedNamespace(dbs));
 			if(!isSyncedNamespace(dbs)){
-				unExcutedIndexArr.push(oplog.ts);// this command is not excuted , so push it to array
+				unExcutedIndexArr.push(tsInfo);// this command is not excuted , so push it to array
 				syncedSize++;
 				commandArr.shift();
 				cmdFlag = true;
@@ -209,11 +210,11 @@ function startCommand(){
 					solveDelete(dbs,collections,o);
 					break;
 				case "n":	
-					unExcutedIndexArr.push(oplog.ts);// this command is not excuted , so push it to array
+					unExcutedIndexArr.push(tsInfo);// this command is not excuted , so push it to array
 					resetSyncedSize2(oplog);
 					break;
 				default: 
-					//unExcutedIndexArr.push(oplog);
+					unExcutedIndexArr.push(tsInfo);
 					resetSyncedSize();
 				 break;
 			}
