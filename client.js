@@ -4,6 +4,7 @@ var config = require("./client.config");
 var PORT = config.server_port || 8081;
 var HOST = config.server_host || "127.0.0.1";
 var KEY = config.secure_key || {};
+var start_from_local_oplog_ts = config.start_from_local_oplog_ts || false;
 var cluster_info = config.cluster_info || "";
 var clientName = KEY.name + "-" + KEY.key;
 var client = new net.Socket();
@@ -28,10 +29,14 @@ function isSyncedNamespace(namespace){
 
 var conn ;
 mongodb.Db.connect(cluster_info,function(err, con) {
-	conn = con;
-	client.connect(PORT , HOST , function(){
-		console.log("client connected to server %s:%s" , HOST , PORT);
-	});
+	if(!err){
+		conn = con;
+		client.connect(PORT , HOST , function(){
+			console.log("client connected to server %s:%s" , HOST , PORT);
+		});
+	}else{
+		console.log(err);
+	}
 });
 var type_normal = 1;
 var type_zip = 2;
@@ -149,12 +154,29 @@ function solveInfo(str){
 	if(Buffer.isBuffer(str)){
 		str = str.toString(common_code,0,str.legnth);
 	}
-	//console.log(str);
+	//console.log("-------------"+str);
 	var obj = eval("(" + str + ")");
 	//answer asking secure
 	if(obj.type == 5){
 		//send secure info
-		sendData('{type:1,info:' + JSON.stringify(KEY) + '}');
+		if(start_from_local_oplog_ts){
+			conn.databaseName = "local";
+			conn.createCollection("oplog.rs",{},function(err, collection){
+				collection.find().sort({ts : -1}).limit(1).toArray(function(err, data) {
+					if(!err){
+						if(data.length > 0){
+							var ts = data[0].ts.toString();
+							//console.log(ts);
+							sendData('{type:1,info:' + JSON.stringify(KEY) + ',ts:"' + ts +'"}');
+						}
+					}else{
+						client.destroy();
+					}
+				});
+			});
+		}else{
+			sendData('{type:1,info:' + JSON.stringify(KEY) + '}');
+		}
 	}
 	//sync info
 	if(obj.type == 3){
@@ -163,6 +185,7 @@ function solveInfo(str){
 		for(var i=0;i<arr.length;i++){
 			commandArr.push(arr[i]);
 		}
+		console.log("get new command from server...");
 		startCommand();
 	}
 }
@@ -256,14 +279,14 @@ function solveCmd(o,dbs,collections){
 		if(o["create"]){	
 			var tableName = o["create"];
 			conn.createCollection(tableName,{},function(err, collection){
-				console.log("create collection %s" , tableName);
+				debugs("create collection %s" , tableName);
 				resetSyncedSize2();
 			});
 		}
 		if(o["drop"]){	
 			var tableName = o["drop"];
 			conn.dropCollection(tableName,function(err, collection){
-				console.log("drop collection %s" , tableName);
+				debugs("drop collection %s" , tableName);
 				resetSyncedSize2();			
 			});
 		}
@@ -271,13 +294,13 @@ function solveCmd(o,dbs,collections){
 			var tableName = o["deleteIndexes"];
 			var indexName = o["index"];
 			conn.dropIndex(tableName,indexName,function(err, collection){
-				console.log("drop collection %s" , tableName);
+				debugs("drop index of collection %s" , tableName);
 				resetSyncedSize2();			
 			});
 		}
 		if(o["dropDatabase"]){	// drop database
 			conn.dropDatabase(function(err, collection){
-				console.log("dropDatabase %s" , dbs);
+				debugs("dropDatabase %s" , dbs);
 				resetSyncedSize2();			
 			});
 		}
@@ -287,7 +310,7 @@ function solveCmd(o,dbs,collections){
 * insert documents or index
 */
 function solveInsert(dbs,collections,o){
-	console.log("database[%s] > collection[%s] inserting " ,dbs,collections);
+	debugs("database[%s] > collection[%s] inserting " ,dbs,collections);
 	conn.databaseName = dbs;
 	var coll = myCollections[collections];
 	if(!coll){
@@ -310,7 +333,7 @@ function insertColl(coll,o){
 * update
 */
 function solveUpdate(dbs,collections,o,o2){
-	console.log("database[%s] > collection[%s] updating " ,dbs,collections);
+	debugs("database[%s] > collection[%s] updating " ,dbs,collections);
 	conn.databaseName = dbs;
 	var coll = myCollections[collections];
 	if(!coll){
@@ -333,7 +356,7 @@ function updateColl(coll,o,o2){
 * delete
 */
 function solveDelete(dbs,collections,o){
-	console.log("database[%s] > collection[%s] deleting %s" ,dbs,collections, JSON.stringify(o));
+	debugs("database[%s] > collection[%s] deleting %s" ,dbs,collections, JSON.stringify(o));
 	conn.databaseName = dbs;
 	var coll = myCollections[collections];
 	if(!coll){
@@ -373,4 +396,12 @@ function getLen(buffer,len){
 		len = str + len;
 	}
 	return len;
+}
+
+var debugFlag = false;
+function debugs(){
+	if(debugFlag){
+		console.log("debug >>>");
+		console.log(arguments);
+	}
 }

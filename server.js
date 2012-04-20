@@ -34,6 +34,7 @@ var regClientKeyObj = {};
 var regClientFromFlag = {};
 var regClientToFlag = {};
 var regClientZipInfo = {};
+var regClientStartFlag = {};
 
 var debugFlag = false;
 function debugs(){
@@ -58,7 +59,6 @@ function solveInfo(data,c){
 	var syncCount = result.syncCount;
 	// first time ,register
 	if(result.type == 1){
-		
 		if(!KEYSOBJ[key]){//secrue key error
 			c.destroy();
 			console.log("client %s:%s not allow connect, it's without secrue key ..." , c.remoteAddress , c.remotePort);
@@ -66,12 +66,13 @@ function solveInfo(data,c){
 			c.destroy();
 			console.log("client %s:%s not allow connect, secrue key is in used ..." , c.remoteAddress , c.remotePort);
 		}else{
-				regClientObj[key] = c;
-				if(c){
-					regClientKeyObj[genderIPKey(c)] = key;
-					console.log("client %s:%s allow connect ..." , c.remoteAddress , c.remotePort);
-				}
-				clientState[key] = "wait for sync";
+			regClientStartFlag[key] = result.ts;
+			regClientObj[key] = c;
+			if(c){
+				regClientKeyObj[genderIPKey(c)] = key;
+				console.log("client %s:%s allow connect ..." , c.remoteAddress , c.remotePort);
+			}
+			clientState[key] = "wait for sync";
 		}
 	}
 	// after synced info
@@ -191,14 +192,18 @@ function syncMongodb(){
 			if(clientState[k] == "wait for sync"){
 				oplogDao.find({"cluster_name" : k},null,function(err,data){
 					if(!err){
+						var clientStartFlag = regClientStartFlag[k];
+						var isClientStartFlagEmpty = clientStartFlag && clientStartFlag != "";
+						if(isClientStartFlagEmpty){
+							console.log("client %s ask to sync from %s" , k , clientStartFlag);
+						}
 						var isNew = false;
 						var dao = new oplogDao();
 						if(data.length == 0){
 							dao.cluster_name = k;
-							dao.last_flag = 0;	
+							dao.last_flag = (isClientStartFlagEmpty ? clientStartFlag : "0");	
 							isNew = true;
-						}
-						if(data.length > 0){
+						}else{
 							data = data[0];
 						}
 						dao.cluster_ischanged = false;
@@ -207,19 +212,20 @@ function syncMongodb(){
 							dao.save(function(err){
 								if(!err){//null
 									startSync(k , dao.last_flag);
+									regClientStartFlag[k] = null;
 								}
 							});
 						}else{
 							oplogDao.update({_id:dao._id},{cluster_ischanged : false},function(err, numAffected){
 								if(!err){//null:0
-									startSync(k , data.last_flag);
+									startSync(k , isClientStartFlagEmpty? clientStartFlag : data.last_flag);
+									regClientStartFlag[k] = null;
 								}
 							});
 						}
 					}
 				});
 			}else{
-				console.log(clientState[k]);
 				console.log(k + " not synced , loop it next time ....");
 			}
 		}
@@ -247,6 +253,7 @@ function startSync(cluster_name,last_flag){
 			if(dataLen > 0){
 				regClientFromFlag[cluster_name] = data[0].ts.toString();
 				regClientToFlag[cluster_name] = data[dataLen - 1].ts.toString();
+				console.log("get oplog from %s to %s",regClientFromFlag[cluster_name],regClientToFlag[cluster_name]);
 				//console.log("last_flag from :%s , to : %s",last_flag,regClientToFlag[cluster_name]);
 				var result = {type:3,info:data};
 				console.log("sending sync info to client \"%s\"",cluster_name);
