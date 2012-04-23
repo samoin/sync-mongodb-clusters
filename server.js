@@ -149,6 +149,18 @@ var server = net.createServer(function(c){
 		regClientKeyObj[genderIPKey(c)] = null;
 		console.log("server disconnected %s:%s" , c.remoteAddress , c.remotePort);
 	});
+	/**c.on("drain", function(){
+		console.log("drain %s",genderIPKey(c));
+	});*/
+	c.on("close",function(){
+		var ipKey = c._peername.address + ":" + c._peername.port;
+		console.log("client %s(ip:%s) disconnected, removed it from loop" , regClientKeyObj[ipKey],ipKey);
+		regClientObj[regClientKeyObj[ipKey]] = null;
+		regClientKeyObj[ipKey] = null;		
+	});
+	c.on("error",function(e){
+		console.log("error: %s " , e );
+	});
 	c.pipe(c);
 	console.log("server connected");
 });
@@ -187,6 +199,7 @@ function addDbToClustersinfo(dbName,clusterInfo){
 * looping for sync mongodb
 */
 function syncMongodb(){
+
 	for(k in regClientObj){
 		if(regClientObj[k] != null){
 			if(clientState[k] == "wait for sync"){
@@ -200,41 +213,41 @@ function syncMongodb(){
 
 function changeOplogInfo(k){
 	oplogDao.find({"cluster_name" : k},null,function(err,data){
-					if(!err){
-						var clientStartFlag = regClientStartFlag[k];
-						var isClientStartFlagEmpty = clientStartFlag && clientStartFlag != "";
-						if(isClientStartFlagEmpty){
-							console.log("client %s ask to sync from %s" , k , clientStartFlag);
-						}
-						var isNew = false;
-						var dao = new oplogDao();
-						if(data.length == 0){
-							dao.cluster_name = k;
-							dao.last_flag = (isClientStartFlagEmpty ? clientStartFlag : "0");	
-							isNew = true;
-						}else{
-							data = data[0];
-						}
-						dao.cluster_ischanged = false;
-						dao._id = data._id;
-						if(isNew){
-							dao.save(function(err){
-								if(!err){//null
-									startSync(k , dao.last_flag);
-									regClientStartFlag[k] = null;
-								}
-							});
-						}else{
-							oplogDao.update({_id:dao._id},{cluster_ischanged : false},function(err, numAffected){
-								if(!err){//null:0
-									startSync(k , isClientStartFlagEmpty? clientStartFlag : data.last_flag);
-									regClientStartFlag[k] = null;
-								}
-							});
-						}
-						
+		if(!err){
+			var clientStartFlag = regClientStartFlag[k];
+			var isClientStartFlagEmpty = clientStartFlag && clientStartFlag != "";
+			if(isClientStartFlagEmpty){
+				console.log("client %s ask to sync from %s" , k , clientStartFlag);
+			}
+			var isNew = false;
+			var dao = new oplogDao();
+			if(data.length == 0){
+				dao.cluster_name = k;
+				dao.last_flag = (isClientStartFlagEmpty ? clientStartFlag : "0");	
+				isNew = true;
+			}else{
+				data = data[0];
+			}
+			dao.cluster_ischanged = false;
+			dao._id = data._id;
+			if(isNew){
+				dao.save(function(err){
+					if(!err){//null
+						startSync(k , dao.last_flag);
+						regClientStartFlag[k] = null;
 					}
 				});
+			}else{
+				oplogDao.update({_id:dao._id},{cluster_ischanged : false},function(err, numAffected){
+					if(!err){//null:0
+						startSync(k , isClientStartFlagEmpty? clientStartFlag : data.last_flag);
+						regClientStartFlag[k] = null;
+					}
+				});
+			}
+			
+		}
+	});
 }
 var Timestamp = require('mongodb').Timestamp;
 /**

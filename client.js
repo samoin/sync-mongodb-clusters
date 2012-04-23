@@ -3,6 +3,7 @@ var mongodb = require('mongodb');
 var config = require("./client.config");
 var PORT = config.server_port || 8081;
 var HOST = config.server_host || "127.0.0.1";
+var reconnect_time = config.reconnect_time || 1;
 var KEY = config.secure_key || {};
 var start_from_local_oplog_ts = config.start_from_local_oplog_ts || false;
 var cluster_info = config.cluster_info || "";
@@ -31,13 +32,17 @@ var conn ;
 mongodb.Db.connect(cluster_info,function(err, con) {
 	if(!err){
 		conn = con;
-		client.connect(PORT , HOST , function(){
-			console.log("client connected to server %s:%s" , HOST , PORT);
-		});
+		connectServer();
 	}else{
 		console.log(err);
 	}
 });
+
+function connectServer(){
+	client.connect(PORT , HOST , function(){
+		console.log("client connected to server %s:%s" , HOST , PORT);
+	});
+}
 var type_normal = 1;
 var type_zip = 2;
 var type_len = 1;
@@ -147,6 +152,31 @@ function solveData2(infoBuff,lastType){
 //client.bufferSize = 16;
 client.on("end", function(){
 	console.log("client disconnected");
+});
+
+client.on("close", function(e){
+	console.log("client close,maybe server is down");
+	// if server is down ,reconnect it several seconds later
+	client.destroy();
+	setTimeout(function () {
+		  connectServer();
+		}, reconnect_time * 1000);
+});
+client.on("timeout", function(){
+	console.log("client timeout");
+});
+/**client.on("drain", function(){
+
+});*/
+client.on("error", function(e){
+	console.log("client error");
+	if (e.code == 'EADDRINUSE') {
+		console.log('Address in use, retrying...');
+		setTimeout(function () {
+		  client.close();
+		  connectServer();
+		}, 1000);
+	 }
 });
 
 // solve info 
