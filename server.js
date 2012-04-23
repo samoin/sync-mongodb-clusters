@@ -45,11 +45,11 @@ function debugs(){
 }
 /**
 * add listener to catch uncaughtException , as socket error
-*/
+
 process.on('uncaughtException', function (err) {
  console.log('Caught exception: ' + err);
 });
-
+*/
 function solveInfo(data,c){
 	//type: {1:secrue,2:msg,3:syncInfo,4:client synced,5:askSecrue},info:{}
 	var result = eval("(" + data + ")");
@@ -187,10 +187,19 @@ function addDbToClustersinfo(dbName,clusterInfo){
 * looping for sync mongodb
 */
 function syncMongodb(){
-	for(var k in regClientObj){
+	for(k in regClientObj){
 		if(regClientObj[k] != null){
 			if(clientState[k] == "wait for sync"){
-				oplogDao.find({"cluster_name" : k},null,function(err,data){
+				changeOplogInfo(k);
+			}else{
+				console.log(k + " not synced , loop it next time ....");
+			}
+		}
+	}
+}
+
+function changeOplogInfo(k){
+	oplogDao.find({"cluster_name" : k},null,function(err,data){
 					if(!err){
 						var clientStartFlag = regClientStartFlag[k];
 						var isClientStartFlagEmpty = clientStartFlag && clientStartFlag != "";
@@ -223,13 +232,9 @@ function syncMongodb(){
 								}
 							});
 						}
+						
 					}
 				});
-			}else{
-				console.log(k + " not synced , loop it next time ....");
-			}
-		}
-	}
 }
 var Timestamp = require('mongodb').Timestamp;
 /**

@@ -31,7 +31,6 @@ var conn ;
 mongodb.Db.connect(cluster_info,function(err, con) {
 	if(!err){
 		conn = con;
-		console.log("client connecting server %s:%s" , HOST , PORT);
 		client.connect(PORT , HOST , function(){
 			console.log("client connected to server %s:%s" , HOST , PORT);
 		});

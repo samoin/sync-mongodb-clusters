@@ -11,7 +11,7 @@
 */
 module.exports = {
 	port : 8081,
-	host : "172.16.9.117",
+	host : "127.0.0.1",
 	loop_time : 1,
 	max_sync_count_per : 100,
 	info_limit_size : 128,
