@@ -1,0 +1,102 @@
+1.server给client发送的信息进行二进制压缩后正常，但是client给server发送的在二进制后解压缩不正常
+
+2.client给server发送信息的时候，在第一次的通讯中（最少在这个阶段），在client监听的data事件也会收到这段内容
+
+3.socket的服务端和客户端断开后的监听事件
+
+4.在进行大数据量同步的时候（单位：条，大于1W），出现同步数据量不全的问题（1W+，实际只有9.5K条记录）x
+   找到问题的所在了，目前看来，oplog。rs表最多只会记录9902条记录，而现在我是通过skip和limit来实现的，最早想通过ts来作为查询条件，但是有问题。目前来看，只能修改现在的查询逻辑了。
+
+
+5.在同步中，有新数据发生的时候，会出现重复发送多组同样记录的情况，待解决
+   目前已解决多从服务器不能正常同步的问题x
+
+ty2-1234567890ty2 not synced , loop it next time ....
+sending sync info to client "ty2-1234567890ty2"
+before zip size : 2258076 , after zip size : 577791
+syncing
+ty2-1234567890ty2 not synced , loop it next time ....
+sending sync info to client "ty2-1234567890ty2"
+before zip size : 2028505 , after zip size : 533562
+sending sync info to client "ty2-1234567890ty2"
+before zip size : 1057802 , after zip size : 250804
+sending sync info to client "ty2-1234567890ty2"
+sending sync info to client "ty2-1234567890ty2"
+syncing
+ty2-1234567890ty2 not synced , loop it next time ....
+sending sync info to client "ty2-1234567890ty2"
+sending sync info to client "ty2-1234567890ty2"
+sending sync info to client "ty2-1234567890ty2"
+sending sync info to client "ty2-1234567890ty2"
+syncing
+ty2-1234567890ty2 not synced , loop it next time ....
+sending sync info to client "ty2-1234567890ty2"
+sending sync info to client "ty2-1234567890ty2"
+syncing
+ty2-1234567890ty2 not synced , loop it next time ....
+sending sync info to client "ty2-1234567890ty2"
+sending sync info to client "ty2-1234567890ty2"
+sending sync info to client "ty2-1234567890ty2"
+syncing
+ty2-1234567890ty2 not synced , loop it next time ....
+before zip size : 2664500 , after zip size : 648438
+before zip size : 2664500 , after zip size : 648438
+before zip size : 2664500 , after zip size : 648438
+before zip size : 2664500 , after zip size : 648438
+before zip size : 2664500 , after zip size : 648438
+before zip size : 2664500 , after zip size : 648438
+before zip size : 2664500 , after zip size : 648438
+before zip size : 2664500 , after zip size : 648438
+syncing
+ty2-1234567890ty2 not synced , loop it next time ....
+before zip size : 2664500 , after zip size : 648438
+before zip size : 2664500 , after zip size : 648438
+before zip size : 2664500 , after zip size : 648438
+syncing
+ty2-1234567890ty2 not synced , loop it next time ....
+syncing
+ty2-1234567890ty2 not synced , loop it next time ....
+syncing
+ty2-1234567890ty2 not synced , loop it next time ....
+syncing
+ty2-1234567890ty2 not synced , loop it next time ....
+syncing
+ty2-1234567890ty2 not synced , loop it next time ....
+syncing
+ty2-1234567890ty2 not synced , loop it next time ....
+syncing
+ty2-1234567890ty2 not synced , loop it next time ....
+======================================================
+sending sync info to client "sh-9876543210sh"
+[[[[[[[[[[ {"port":3764,"family":2,"address":"172.16.9.117"}
+client sh-9876543210sh get oplog from 5733407617875705857 to 5733407617875705857
+
+sending sync info to client "sh-9876543210sh"
+[[[[[[[[[[ {"port":3764,"family":2,"address":"172.16.9.117"}
+sh-9876543210sh before zip size : 184 , after zip size : 174
+{ port: 3764, family: 2, address: '172.16.9.117' }
+sh-9876543210sh before zip size : 184 , after zip size : 174
+{ port: 3764, family: 2, address: '172.16.9.117' }
+client 172.16.9.117:3764 has synced last info from 5733407617875705857 to 573340
+7617875705857
+client 172.16.9.117:3764 has synced last info from 5733407617875705857 to 573340
+7617875705857
+client sh-9876543210sh get oplog from 5733407617875705857 to 5733407617875705857
+
+sending sync info to client "sh-9876543210sh"
+[[[[[[[[[[ {"port":3764,"family":2,"address":"172.16.9.117"}
+client "sh-9876543210sh"  synced all info over ,wait for next change ...
+sh-9876543210sh before zip size : 184 , after zip size : 174
+{ port: 3764, family: 2, address: '172.16.9.117' }
+client 172.16.9.117:3764 has synced last info from 5733407617875705857 to 573340
+7617875705857
+client sh-9876543210sh get oplog from 5733407617875705857 to 5733407617875705857
+
+sending sync info to client "sh-9876543210sh"
+[[[[[[[[[[ {"port":3764,"family":2,"address":"172.16.9.117"}
+client "sh-9876543210sh"  synced all info over ,wait for next change ...
+sh-9876543210sh before zip size : 184 , after zip size : 174
+{ port: 3764, family: 2, address: '172.16.9.117' }
+client 172.16.9.117:3764 has synced last info from 5733407617875705857 to 573340
+7617875705857
+^C
