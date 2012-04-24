@@ -1,14 +1,12 @@
 /** that seems mongoose don't suport more than one datasource,
-* so i copy mongoose ,an renamed "mongoose2" , so they can provide two datasource.
+* so i used "mongo" , so they can provide two datasource.
 * is there any other way ? help...
 */
-// call zip before send buff
 var zlib = require('zlib');
-var clientState = {};
-// net
 var net = require("net")
 	,sys = require("sys");
 var common_code = "utf8";
+
 var config = require("./server.config") || {};
 var PORT = config.port || 8081;
 var HOST = config.host || "127.0.0.1";
@@ -16,7 +14,8 @@ var KEYS = config.keys || [];
 var info_limit_size = config.info_limit_size || 1024;
 var MAXSYNCPER = config.max_sync_count_per || 100;
 var SERVER_CLUSTER = config.server_clusters_info || "";
-var LOOPTIME = config.loop_time || 1;//unit(sec)
+var LOOPTIME = config.loop_time || 2;//unit(sec)
+
 // mongodb
 var oplog = require("./model/oplog")
 	,oplogDao = oplog.dao;
@@ -28,7 +27,9 @@ for(var i=0 ; i<KEYS.length ; i++){
 	var tmp = KEYS[i];
 	KEYSOBJ[tmp.name  + "-" + tmp.key] = tmp;
 }
+
 // registed clientObjects
+var clientState = {};
 var regClientObj = {};
 var regClientKeyObj = {};
 var regClientFromFlag = {};
@@ -59,18 +60,20 @@ function solveInfo(data,c){
 	var syncCount = result.syncCount;
 	// first time ,register
 	if(result.type == 1){
+		var remoteAddress = c.remoteAddress;
+		var remotePort = c.remotePort;
 		if(!KEYSOBJ[key]){//secrue key error
 			c.destroy();
-			console.log("client %s:%s not allow connect, it's without secrue key ..." , c.remoteAddress , c.remotePort);
+			console.log("client %s:%s not allow connect, it's without secrue key ..." , remoteAddress , remotePort);
 		}else if (regClientObj[key]){//secrue key used
 			c.destroy();
-			console.log("client %s:%s not allow connect, secrue key is in used ..." , c.remoteAddress , c.remotePort);
+			console.log("client %s:%s not allow connect, secrue key is in used ..." , remoteAddress , remotePort);
 		}else{
 			regClientStartFlag[key] = result.ts;
 			regClientObj[key] = c;
 			if(c){
 				regClientKeyObj[genderIPKey(c)] = key;
-				console.log("client %s:%s allow connect ..." , c.remoteAddress , c.remotePort);
+				console.log("client %s:%s[%s] allow connect ..." , remoteAddress , remotePort , key);
 			}
 			clientState[key] = "wait for sync";
 		}
@@ -79,7 +82,7 @@ function solveInfo(data,c){
 	if(result.type == 4){
 		var state = result.state;
 		if(state == 0){
-			clientState[key] = "wait for sync";
+			//clientState[key] = "wait for sync";
 			var unExcutedArr = result.unExcutedArr;
 			// resize synced size
 			oplogDao.update({"cluster_name" : key}, {$set:{last_flag : regClientToFlag[key]}}, function(err, numAffected){
@@ -100,7 +103,6 @@ function solveInfo(data,c){
 					dao.save(function(err){
 						if(!err){//null
 							regClientFromFlag[key] = regClientToFlag[key];
-							debugs("oplogdetail is sited");
 							clientState[key] = "wait for sync";
 						}
 					});
@@ -110,75 +112,75 @@ function solveInfo(data,c){
 	}
 }
 //create server
-var server = net.createServer(function(c){
-	c.setEncoding(common_code);
-	c.bufferSize = 16;
-	c.on("connect",function(){
-		console.log("client %s:%s connected, waiting for registe secrue key ..." , c.remoteAddress , c.remotePort);
-		sendData("{type:5}",c);
+var server ;
+var intervals;
+function createServers(){
+	server = net.createServer(function(c){
+		c.setEncoding(common_code);
+		c.bufferSize = 16;
+		c.on("connect",function(){
+			console.log("client %s:%s connected, waiting for registe secrue key ..." , c.remoteAddress , c.remotePort);
+			sendData("{type:5}",c);
+		});
+		c.on("data",function(data){
+			if(!Buffer.isBuffer(data)){
+				data = new Buffer(data,common_code);
+			}
+			var typeBuff = data.slice(0,type_len);
+			lastType = typeBuff.toString(common_code,0,typeBuff.length);
+			// i always get info that client send to server,so strange,here need to solve
+			var	infoLenBuff = data.slice(type_len,base_info_len);
+			infoLen = Number(infoLenBuff.toString(common_code,0,infoLenBuff.length));
+			var infoBuff = data.slice(base_info_len,base_info_len + infoLen);
+			if(lastType == type_zip){
+				zlib.gunzip(infoBuff, function(err, buffer) {
+					if (!err) {
+						var info = buffer.toString(common_code,0,buffer.legnth);
+						solveInfo(info,c);
+					}else{
+						console.log(err);
+					}
+				});
+			}
+			if(lastType == type_normal){
+				var info = infoBuff.toString(common_code,0,infoBuff.length);
+				solveInfo(info,c);
+			}
+			
+		});
+		c.on("end",function(){
+			// reset key in regClientObj to null
+			regClientObj[regClientKeyObj[genderIPKey(c)]] = null;
+			regClientKeyObj[genderIPKey(c)] = null;
+			console.log("server disconnected %s:%s" , c.remoteAddress , c.remotePort);
+		});
+		/**c.on("drain", function(){
+			console.log("drain %s",genderIPKey(c));
+		});*/
+		c.on("close",function(){
+			var ipKey = c._peername.address + ":" + c._peername.port;
+			console.log("client %s(ip:%s) disconnected, removed it from loop" , regClientKeyObj[ipKey],ipKey);
+			regClientObj[regClientKeyObj[ipKey]] = null;
+			regClientKeyObj[ipKey] = null;		
+		});
+		c.on("error",function(e){
+			console.log("error: %s " , e );
+		});
+		c.pipe(c);
+		console.log("server connected");
 	});
-	c.on("data",function(data){
-		if(!Buffer.isBuffer(data)){
-			data = new Buffer(data,common_code);
+	//listen server
+	server.listen(PORT , HOST , function(){	
+		if((keysLen = KEYS.length) == 0){
+			console.log("\nsync without key register ...");
+		}else{
+			console.log("\nsync with key register , allow %s clients ..." , keysLen);
 		}
-		var typeBuff = data.slice(0,type_len);
-		lastType = typeBuff.toString(common_code,0,typeBuff.length);
-		// i always get info that client send to server,so strange,here need to solve
-		var	infoLenBuff = data.slice(type_len,base_info_len);
-		infoLen = Number(infoLenBuff.toString(common_code,0,infoLenBuff.length));
-		var infoBuff = data.slice(base_info_len,base_info_len + infoLen);
-		if(lastType == type_zip){
-			zlib.gunzip(infoBuff, function(err, buffer) {
-				if (!err) {
-					var info = buffer.toString(common_code,0,buffer.legnth);
-					solveInfo(info,c);
-				}else{
-					console.log(err);
-				}
-			});
-		}
-		if(lastType == type_normal){
-			var info = infoBuff.toString(common_code,0,infoBuff.length);
-			solveInfo(info,c);
-		}
-		
 	});
-	c.on("end",function(){
-		// reset key in regClientObj to null
-		regClientObj[regClientKeyObj[genderIPKey(c)]] = null;
-		regClientKeyObj[genderIPKey(c)] = null;
-		console.log("server disconnected %s:%s" , c.remoteAddress , c.remotePort);
-	});
-	/**c.on("drain", function(){
-		console.log("drain %s",genderIPKey(c));
-	});*/
-	c.on("close",function(){
-		var ipKey = c._peername.address + ":" + c._peername.port;
-		console.log("client %s(ip:%s) disconnected, removed it from loop" , regClientKeyObj[ipKey],ipKey);
-		regClientObj[regClientKeyObj[ipKey]] = null;
-		regClientKeyObj[ipKey] = null;		
-	});
-	c.on("error",function(e){
-		console.log("error: %s " , e );
-	});
-	c.pipe(c);
-	console.log("server connected");
-});
-//listen server
-server.listen(PORT , HOST , function(){	
-	if((keysLen = KEYS.length) == 0){
-		console.log("\nsync without key register ...");
-	}else{
-		console.log("\nsync with key register , allow %s clients ..." , keysLen);
-	}
-});
+	//create interval ,looping mongodb every n second
+	intervals = setInterval(syncMongodb , LOOPTIME * 1000);
+}
 
-
-
-
-
-//create interval ,looping mongodb every n second
-var intervals = setInterval(syncMongodb , LOOPTIME * 1000);
 /**
 * gender key ,for one client ,with ip and port
 */
@@ -199,15 +201,17 @@ function addDbToClustersinfo(dbName,clusterInfo){
 * looping for sync mongodb
 */
 function syncMongodb(){
-
+	var index = 0;
 	for(k in regClientObj){
 		if(regClientObj[k] != null){
 			if(clientState[k] == "wait for sync"){
 				changeOplogInfo(k);
 			}else{
-				console.log(k + " not synced , loop it next time ....");
+				//if()
+				console.log("index >> %s [%s] not synced , loop it next time ...." , index , k);
 			}
 		}
+		index++;
 	}
 }
 
@@ -254,13 +258,14 @@ var Timestamp = require('mongodb').Timestamp;
 * start sync with cluster_name
 */
 function startSync(cluster_name,last_flag){
+	clientState[cluster_name] = "syncing";	
 	regClientFromFlag[cluster_name] = last_flag;
 	if(coll){
 		console.log("connection initing....");
 		return;
 	}
 	var coll = oplogRs.getColl();
-	clientState[cluster_name] = "syncing";	
+
 	coll.find({ts : {$gt : Timestamp.fromString(last_flag)}}).sort({ts : 1}).limit(MAXSYNCPER).toArray(function(err, data) {
 		if(!err){
 			// because of replica set:
@@ -271,7 +276,7 @@ function startSync(cluster_name,last_flag){
 			if(dataLen > 0){
 				regClientFromFlag[cluster_name] = data[0].ts.toString();
 				regClientToFlag[cluster_name] = data[dataLen - 1].ts.toString();
-				console.log("get oplog from %s to %s",regClientFromFlag[cluster_name],regClientToFlag[cluster_name]);
+				console.log("get oplog for %s from %s to %s" , cluster_name,regClientFromFlag[cluster_name],regClientToFlag[cluster_name]);
 				//console.log("last_flag from :%s , to : %s",last_flag,regClientToFlag[cluster_name]);
 				var result = {type:3,info:data};
 				console.log("sending sync info to client \"%s\"",cluster_name);
@@ -302,7 +307,7 @@ var common_code = "utf8";
 * zip buffer before send to client
 */
 function sendData(str,client,cluster_name){
-	var buff = new Buffer(str, 'utf8');
+	var buff = new Buffer(str, common_code);
 	if(buff.length > info_limit_size){
 		zlib.gzip(buff, function(err, buffer) {
 			if (!err) {
@@ -314,16 +319,12 @@ function sendData(str,client,cluster_name){
 	}
 }
 function sendData2(str,client,cluster_name,buff,buffer,type){
-	console.log("before zip size : %s , after zip size : %s" , buff.length , buffer.length);
+	console.log("send to %s, before zip size : %s , after zip size : %s" , cluster_name , buff.length , buffer.length);
 	var msgInfo = type + "" + getLen(buffer,type == type_normal?str.length:null);
 	var tmp = new Buffer(msgInfo, common_code);
 	if(cluster_name){
 		regClientZipInfo[cluster_name] = {before : buff.length , after : buffer.length };
 	}
-	// i don't know why :
-	// from client when i sendData to server as Buffer , i't can't reach , but client get this message ,
-	// but if change this to String , server can get it , strange...
-	// maybe client is disconnected here , have to solve this problem
 	if(type === type_normal){
 		client.write(msgInfo + str);
 	}else{
@@ -345,4 +346,15 @@ function getLen(buffer,len){
 		len = str + len;
 	}
 	return len;
+}
+
+var cluster = require('cluster');
+if (cluster.isMaster) {
+	cluster.fork();
+	cluster.on('death', function(worker) {
+		console.log('worker ' + worker.pid + ' died , restarting ...');
+		cluster.fork();
+	});
+} else {
+	createServers();
 }

@@ -12,7 +12,7 @@
 module.exports = {
 	port : 8081,
 	host : "172.16.9.117",
-	loop_time : 15,
+	loop_time : 1,
 	max_sync_count_per : 100,
 	info_limit_size : 128,
 	keys : [

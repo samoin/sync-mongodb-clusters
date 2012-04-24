@@ -4,7 +4,7 @@
   },
   "name": "sync-mongodb-cluster",
   "description": "sync oplog.rs by ts ,before used index",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "repository": {
     "url": ""
   },

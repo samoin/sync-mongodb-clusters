@@ -27,16 +27,27 @@ function isSyncedNamespace(namespace){
 	}
 	return false;
 }
+/**
+process.on('uncaughtException', function (err) {
+	console.log('Caught exception: ' + err);
+	client.destroy();
+	connectServer();
+});
+*/
+
 
 var conn ;
-mongodb.Db.connect(cluster_info,function(err, con) {
-	if(!err){
-		conn = con;
-		connectServer();
-	}else{
-		console.log(err);
-	}
-});
+function connectMongbdb(){
+	mongodb.Db.connect(cluster_info,function(err, con) {
+		if(!err){
+			conn = con;
+			connectServer();
+		}else{
+			console.log(err);
+		}
+	});
+}
+
 
 function connectServer(){
 	client.connect(PORT , HOST , function(){
@@ -100,9 +111,9 @@ function solveData(){
 				var needEnd = buffLen + data2Len;
 				if(needEnd > data2Len){
 					needEnd = data2Len;
-				}
+				}		
 				data2.copy(mergedBuff,buffLen,0,needEnd);
-				console.log("concating info ... ");
+				console.log("connecting buffers ... , merging length %s , merged length %s , need length %s" , data2Len , mergedBuff.length , expectLen);
 				//console.log("before1 shift : %s" , dataBuff.length);
 				dataBuff.shift();//remove index 0 
 				dataBuff.shift();//remove index 1 
@@ -157,14 +168,18 @@ client.on("end", function(){
 client.on("close", function(e){
 	console.log("client close,maybe server is down");
 	// if server is down ,reconnect it several seconds later
-	client.destroy();
-	setTimeout(function () {
-		  connectServer();
-		}, reconnect_time * 1000);
+	restartClient();
 });
 client.on("timeout", function(){
 	console.log("client timeout");
 });
+
+function restartClient(){
+	client.destroy();
+	setTimeout(function () {
+		  connectServer();
+		}, reconnect_time * 1000);
+}
 /**client.on("drain", function(){
 
 });*/
@@ -287,7 +302,7 @@ function resetSyncedSize(){
 		sendData('{type:4,state:0,info:' + JSON.stringify(KEY) + ',unExcutedArr:' + JSON.stringify(unExcutedIndexArr) + ',syncCount:' + sync_size +'}');
 		unExcutedIndexArr = [];
 		cmdFlag = true;
-		console.log("waiting for server provide cmd ....");
+		console.log("[%s] waiting for server provide cmd ...." , new Date());
 	}
 }
 /**
@@ -434,4 +449,16 @@ function debugs(){
 		console.log("debug >>>");
 		console.log(arguments);
 	}
+}
+
+
+var cluster = require('cluster');
+if (cluster.isMaster) {
+	cluster.fork();
+	cluster.on('death', function(worker) {
+		console.log('worker ' + worker.pid + ' died , restarting ...');
+		cluster.fork();
+	});
+} else {
+	connectMongbdb();
 }
