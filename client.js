@@ -35,7 +35,6 @@ process.on('uncaughtException', function (err) {
 });
 */
 
-
 var conn ;
 function connectMongbdb(){
 	mongodb.Db.connect(cluster_info,function(err, con) {
@@ -47,7 +46,6 @@ function connectMongbdb(){
 		}
 	});
 }
-
 
 function connectServer(){
 	client.connect(PORT , HOST , function(){
@@ -72,8 +70,6 @@ var isSolving = false;
 
 
 client.on("data", function(data){
-	//console.log("data %s,",data);//data
-	//console.log("get data");
 	if(!Buffer.isBuffer(data)){
 		data = new Buffer(data,common_code);
 	}
@@ -114,12 +110,9 @@ function solveData(){
 				}		
 				data2.copy(mergedBuff,buffLen,0,needEnd);
 				console.log("connecting buffers ... , merging length %s , merged length %s , need length %s" , data2Len , mergedBuff.length , expectLen);
-				//console.log("before1 shift : %s" , dataBuff.length);
 				dataBuff.shift();//remove index 0 
 				dataBuff.shift();//remove index 1 
-				//console.log("after1 shift : %s" , dataBuff.length);
 				dataBuff.unshift(mergedBuff);//put mergedBuff to index 0 
-				//console.log("after1 unshift : %s" , dataBuff.length);
 				isSolving = false;
 				solveData();
 			}else{
@@ -127,14 +120,12 @@ function solveData(){
 			}
 		}else{
 			var infoBuff = data.slice(base_info_len,expectLen);
-			//console.log("before shift : %s,expectLen : %s,buffLen : %s" , dataBuff.length,expectLen,buffLen);
 			dataBuff.shift();//remove index 0 
 			if(expectLen < buffLen){
 				var releasedBuff = new Buffer(buffLen - expectLen);
 				data.copy(releasedBuff,expectLen,expectLen,buffLen);
 				dataBuff.unshift(releasedBuff);//put releasedBuff to index 0 
 			}
-			//console.log("after shift : %s" , dataBuff.length);
 			solveData2(infoBuff,lastType);
 		}
 	}else{
@@ -160,7 +151,6 @@ function solveData2(infoBuff,lastType){
 	}
 }
 
-//client.bufferSize = 16;
 client.on("end", function(){
 	console.log("client disconnected");
 });
@@ -199,7 +189,6 @@ function solveInfo(str){
 	if(Buffer.isBuffer(str)){
 		str = str.toString(common_code,0,str.legnth);
 	}
-	//console.log("-------------"+str);
 	var obj = eval("(" + str + ")");
 	//answer asking secure
 	if(obj.type == 5){
@@ -211,7 +200,6 @@ function solveInfo(str){
 					if(!err){
 						if(data.length > 0){
 							var ts = data[0].ts.toString();
-							//console.log(ts);
 							sendData('{type:1,info:' + JSON.stringify(KEY) + ',ts:"' + ts +'"}');
 						}
 					}else{
@@ -253,7 +241,6 @@ function startCommand(){
 			var dbs = ns.substring(0,tmp);
 			var collections = ns.substring(tmp+1,ns.length);
 			var tsInfo = oplog.ts.toString();
-			//console.log(dbs + ":" + isSyncedNamespace(dbs));
 			if(!isSyncedNamespace(dbs)){
 				unExcutedIndexArr.push(tsInfo);// this command is not excuted , so push it to array
 				syncedSize++;
@@ -317,21 +304,17 @@ var myCollections = {};
 * command
 */
 function solveCmd(o,dbs,collections){
-	// mongoose.connectSet(cluster_info);
-	//	conn.close(true,function(){console.log("closed db");});
 	conn.databaseName = dbs;
 	if(collections === "$cmd"){
 		if(o["create"]){	
 			var tableName = o["create"];
 			conn.createCollection(tableName,{},function(err, collection){
-				debugs("create collection %s" , tableName);
 				resetSyncedSize2();
 			});
 		}
 		if(o["drop"]){	
 			var tableName = o["drop"];
 			conn.dropCollection(tableName,function(err, collection){
-				debugs("drop collection %s" , tableName);
 				resetSyncedSize2();			
 			});
 		}
@@ -339,13 +322,11 @@ function solveCmd(o,dbs,collections){
 			var tableName = o["deleteIndexes"];
 			var indexName = o["index"];
 			conn.dropIndex(tableName,indexName,function(err, collection){
-				debugs("drop index of collection %s" , tableName);
 				resetSyncedSize2();			
 			});
 		}
 		if(o["dropDatabase"]){	// drop database
 			conn.dropDatabase(function(err, collection){
-				debugs("dropDatabase %s" , dbs);
 				resetSyncedSize2();			
 			});
 		}
@@ -355,7 +336,6 @@ function solveCmd(o,dbs,collections){
 * insert documents or index
 */
 function solveInsert(dbs,collections,o){
-	debugs("database[%s] > collection[%s] inserting " ,dbs,collections);
 	conn.databaseName = dbs;
 	var coll = myCollections[collections];
 	if(!coll){
@@ -378,7 +358,6 @@ function insertColl(coll,o){
 * update
 */
 function solveUpdate(dbs,collections,o,o2){
-	debugs("database[%s] > collection[%s] updating " ,dbs,collections);
 	conn.databaseName = dbs;
 	var coll = myCollections[collections];
 	if(!coll){
@@ -401,7 +380,6 @@ function updateColl(coll,o,o2){
 * delete
 */
 function solveDelete(dbs,collections,o){
-	debugs("database[%s] > collection[%s] deleting %s" ,dbs,collections, JSON.stringify(o));
 	conn.databaseName = dbs;
 	var coll = myCollections[collections];
 	if(!coll){
@@ -442,15 +420,6 @@ function getLen(buffer,len){
 	}
 	return len;
 }
-
-var debugFlag = false;
-function debugs(){
-	if(debugFlag){
-		console.log("debug >>>");
-		console.log(arguments);
-	}
-}
-
 
 var cluster = require('cluster');
 if (cluster.isMaster) {

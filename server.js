@@ -37,13 +37,6 @@ var regClientToFlag = {};
 var regClientZipInfo = {};
 var regClientStartFlag = {};
 
-var debugFlag = false;
-function debugs(){
-	if(debugFlag){
-		console.log("debug >>>");
-		console.log(arguments);
-	}
-}
 /**
 * add listener to catch uncaughtException , as socket error
 
@@ -56,7 +49,6 @@ function solveInfo(data,c){
 	var result = eval("(" + data + ")");
 	var secrue = result.info;
 	var key = secrue.name + "-" + secrue.key;
-	//console.log("client \"" + key + "\" say :\n " + data);
 	var syncCount = result.syncCount;
 	// first time ,register
 	if(result.type == 1){
@@ -82,7 +74,6 @@ function solveInfo(data,c){
 	if(result.type == 4){
 		var state = result.state;
 		if(state == 0){
-			//clientState[key] = "wait for sync";
 			var unExcutedArr = result.unExcutedArr;
 			// resize synced size
 			oplogDao.update({"cluster_name" : key}, {$set:{last_flag : regClientToFlag[key]}}, function(err, numAffected){
@@ -99,7 +90,6 @@ function solveInfo(data,c){
 						dao.before_zip = zipInfo.before;
 						dao.after_zip = zipInfo.after;
 					}
-					//debugs(dao.cluster_name + ":" + dao.update_time + ":" + dao.server_oplog_index_from + ":" + dao.server_oplog_index_to + ":" + dao.client_oplog_update_count);
 					dao.save(function(err){
 						if(!err){//null
 							regClientFromFlag[key] = regClientToFlag[key];
@@ -117,7 +107,7 @@ var intervals;
 function createServers(){
 	server = net.createServer(function(c){
 		c.setEncoding(common_code);
-		c.bufferSize = 16;
+		c.bufferSize = 16 * 1024;
 		c.on("connect",function(){
 			console.log("client %s:%s connected, waiting for registe secrue key ..." , c.remoteAddress , c.remotePort);
 			sendData("{type:5}",c);
@@ -207,7 +197,6 @@ function syncMongodb(){
 			if(clientState[k] == "wait for sync"){
 				changeOplogInfo(k);
 			}else{
-				//if()
 				console.log("index >> %s [%s] not synced , loop it next time ...." , index , k);
 			}
 		}
@@ -268,16 +257,11 @@ function startSync(cluster_name,last_flag){
 
 	coll.find({ts : {$gt : Timestamp.fromString(last_flag)}}).sort({ts : 1}).limit(MAXSYNCPER).toArray(function(err, data) {
 		if(!err){
-			// because of replica set:
-			// i need to disconnect every time ,otherwise , it will throw exception
-			// Error: db object already connecting, open cannot be called multiple times
-			// at Db.open (/cygdrive/e/nodespace/sync-mongodb-cluster/node_modules/mongoose...
 			var dataLen = data.length;
 			if(dataLen > 0){
 				regClientFromFlag[cluster_name] = data[0].ts.toString();
 				regClientToFlag[cluster_name] = data[dataLen - 1].ts.toString();
 				console.log("get oplog for %s from %s to %s" , cluster_name,regClientFromFlag[cluster_name],regClientToFlag[cluster_name]);
-				//console.log("last_flag from :%s , to : %s",last_flag,regClientToFlag[cluster_name]);
 				var result = {type:3,info:data};
 				console.log("sending sync info to client \"%s\"",cluster_name);
 				sendData(JSON.stringify(result) , regClientObj[cluster_name] , cluster_name);
