@@ -227,6 +227,7 @@ var commandArr = [];
 var syncedSize = 0;
 var cmdFlag = true;
 var unExcutedIndexArr = [];
+var errArr = [];
 /**
 * start to submit cmd
 */
@@ -253,16 +254,16 @@ function startCommand(){
 			var o2 = oplog.o2;//info2,when updata ,this appears
 			switch(op){
 				case "c":
-					solveCmd(o,dbs,collections);
+					solveCmd(tsInfo,o,dbs,collections);
 					break;
 				case "i":
-					solveInsert(dbs,collections,o);
+					solveInsert(tsInfo,dbs,collections,o);
 					break;
 				case "u":	
-					solveUpdate(dbs,collections,o,o2);
+					solveUpdate(tsInfo,dbs,collections,o,o2);
 					break;
 				case "d":	
-					solveDelete(dbs,collections,o);
+					solveDelete(tsInfo,dbs,collections,o);
 					break;
 				case "n":	
 					unExcutedIndexArr.push(tsInfo);// this command is not excuted , so push it to array
@@ -286,8 +287,11 @@ function resetSyncedSize(){
 	if(syncedSize == sync_size){
 		// synced over , record to db
 		syncedSize = 0;
-		sendData('{type:4,state:0,info:' + JSON.stringify(KEY) + ',unExcutedArr:' + JSON.stringify(unExcutedIndexArr) + ',syncCount:' + sync_size +'}');
+		var datas = '{type:4,state:' + (errArr.length >0 ? 1 : 0) + ',info:' + JSON.stringify(KEY) + ',errArr:' + JSON.stringify(errArr) + ',unExcutedArr:' + JSON.stringify(unExcutedIndexArr) + ',syncCount:' + sync_size +'}';
+		sendData(datas);
+		console.log("this synced result : >> " + datas);
 		unExcutedIndexArr = [];
+		errArr = [];
 		cmdFlag = true;
 		console.log("[%s] waiting for server provide cmd ...." , new Date());
 	}
@@ -303,18 +307,24 @@ var myCollections = {};
 /**
 * command
 */
-function solveCmd(o,dbs,collections){
+function solveCmd(ts,o,dbs,collections){
 	conn.databaseName = dbs;
 	if(collections === "$cmd"){
 		if(o["create"]){	
 			var tableName = o["create"];
 			conn.createCollection(tableName,{},function(err, collection){
+				if(err){
+					errArr.push(ts);
+				}
 				resetSyncedSize2();
 			});
 		}
 		if(o["drop"]){	
 			var tableName = o["drop"];
 			conn.dropCollection(tableName,function(err, collection){
+				if(err){
+					errArr.push(ts);
+				}
 				resetSyncedSize2();			
 			});
 		}
@@ -322,11 +332,17 @@ function solveCmd(o,dbs,collections){
 			var tableName = o["deleteIndexes"];
 			var indexName = o["index"];
 			conn.dropIndex(tableName,indexName,function(err, collection){
+				if(err){
+					errArr.push(ts);
+				}
 				resetSyncedSize2();			
 			});
 		}
 		if(o["dropDatabase"]){	// drop database
 			conn.dropDatabase(function(err, collection){
+				if(err){
+					errArr.push(ts);
+				}
 				resetSyncedSize2();			
 			});
 		}
@@ -335,67 +351,73 @@ function solveCmd(o,dbs,collections){
 /**
 * insert documents or index
 */
-function solveInsert(dbs,collections,o){
+function solveInsert(ts,dbs,collections,o){
 	conn.databaseName = dbs;
 	var coll = myCollections[collections];
 	if(!coll){
 		conn.collection(collections,function(err, coll) {
 			myCollections[collections] = coll;
-			insertColl(coll,o);
+			insertColl(ts,coll,o);
 		})
 	}else{
-		insertColl(coll,o);
+		insertColl(ts,coll,o);
 	}
 }	
-function insertColl(coll,o){
+function insertColl(ts,coll,o){
 	coll.insert(o,function(err,result){
 		if(!err){
-			resetSyncedSize2();
+			err = "123";
 		}
+		if(err){
+			errArr.push(ts);
+		}
+		resetSyncedSize2();
 	});
 }
 /**
 * update
 */
-function solveUpdate(dbs,collections,o,o2){
+function solveUpdate(ts,dbs,collections,o,o2){
 	conn.databaseName = dbs;
 	var coll = myCollections[collections];
 	if(!coll){
 		conn.collection(collections,function(err, coll) {
 			myCollections[collections] = coll;
-			updateColl(coll,o,o2);
+			updateColl(ts,coll,o,o2);
 		})
 	}else{
-		updateColl(coll,o,o2);
+		updateColl(ts,coll,o,o2);
 	}
 }
-function updateColl(coll,o,o2){
+function updateColl(ts,coll,o,o2){
 	coll.update(o2 , o ,function(err){
-		if(!err){
-			resetSyncedSize2();
+		if(err){
+			errArr.push(ts);
 		}
+		resetSyncedSize2();
 	});
 }
 /**
 * delete
 */
-function solveDelete(dbs,collections,o){
+function solveDelete(ts,dbs,collections,o){
 	conn.databaseName = dbs;
 	var coll = myCollections[collections];
 	if(!coll){
 		conn.collection(collections,function(err, coll) {
 			myCollections[collections] = coll;
-			removeColl(coll,o);
+			removeColl(ts,coll,o);
 		})
 	}else{
-		removeColl(coll,o);
+		removeColl(ts,coll,o);
 	}
 }
-function removeColl(coll,o){
+function removeColl(ts,coll,o){
 	coll.remove(o,function(err,result){
-		if(!err){
-			resetSyncedSize2();
+		if(err){
+			errArr.push(ts);
 		}
+		resetSyncedSize2();
 	});
 }
 

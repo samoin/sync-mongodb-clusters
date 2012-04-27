@@ -6,6 +6,7 @@ OplogSchema = new base.Schema({
 	server_oplog_ts_to : {type : String},
 	client_oplog_update_count : {type : Number},
 	client_oplog_error_array : {type : String},
+	client_oplog_unExcuteError_array : {type : String},
 	before_zip : {type : Number},
 	after_zip : {type : Number}
 });

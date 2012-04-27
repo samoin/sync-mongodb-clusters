@@ -75,6 +75,7 @@ function solveInfo(data,c){
 		var state = result.state;
 		if(state == 0){
 			var unExcutedArr = result.unExcutedArr;
+			var errArr = result.errArr;
 			// resize synced size
 			oplogDao.update({"cluster_name" : key}, {$set:{last_flag : regClientToFlag[key]}}, function(err, numAffected){
 				if(!err){
@@ -84,7 +85,8 @@ function solveInfo(data,c){
 					dao.server_oplog_ts_from = regClientFromFlag[key];
 					dao.server_oplog_ts_to = regClientToFlag[key];
 					dao.client_oplog_update_count = syncCount - unExcutedArr.length;
-					dao.client_oplog_error_array = JSON.stringify(unExcutedArr);
+					dao.client_oplog_unExcuteError_array = JSON.stringify(unExcutedArr);
+					dao.client_oplog_error_array = JSON.stringify(errArr);
 					var zipInfo = regClientZipInfo[key];
 					if(zipInfo){
 						dao.before_zip = zipInfo.before;
@@ -98,6 +100,8 @@ function solveInfo(data,c){
 					});
 				}
 			});
+		}else{
+			clientState[key] = "wait for sync";
 		}
 	}
 }
