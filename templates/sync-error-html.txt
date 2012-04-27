@@ -1,0 +1,2 @@
+<font color="red">{{key}}</font>同步出错<br/>
+同步返回的结果为<font color="red">{{data}}</font>

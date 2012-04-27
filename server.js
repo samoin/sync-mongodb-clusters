@@ -15,6 +15,10 @@ var info_limit_size = config.info_limit_size || 1024;
 var MAXSYNCPER = config.max_sync_count_per || 100;
 var SERVER_CLUSTER = config.server_clusters_info || "";
 var LOOPTIME = config.loop_time || 2;//unit(sec)
+var maxFailed = config.max_fail_times || 10;
+
+var mailer = config.mailer || {};
+var email = require("mailer/lib/node_mailer");
 
 // mongodb
 var oplog = require("./model/oplog")
@@ -36,6 +40,7 @@ var regClientFromFlag = {};
 var regClientToFlag = {};
 var regClientZipInfo = {};
 var regClientStartFlag = {};
+var regFailedTimeFlag = {};
 
 /**
 * add listener to catch uncaughtException , as socket error
@@ -44,6 +49,32 @@ process.on('uncaughtException', function (err) {
  console.log('Caught exception: ' + err);
 });
 */
+/**
+* sendMail
+*/
+function sendMail(toMail,subject,tempName,data){
+	email.send({
+      host : mailer.host,               // smtp server hostname
+      port : mailer.port,                     // smtp server port
+      domain : mailer.domain,             // domain used by client to identify itself to server
+      to : toMail,
+      from : mailer.from,
+      subject : subject,
+      template : tempName + "",   // path to template name
+      data : data,
+      authentication : "login",        // auth login is supported; anything else is no auth
+      username : mailer.passport,        // username
+      password : mailer.password         // password
+    },
+    function(err, result){
+      if(err){ 
+       console.error("[mailer] : failed with sending mail from : %s  to : %s, it will sended later...\n error is " + err,mailer.from,toMail);
+      } else {
+        console.log("[mailer] : mail sended ,state ok ,from : %s ,to : %s", mailer.from,toMail);
+      }
+    });
+}
+
 function solveInfo(data,c){
 	//type: {1:secrue,2:msg,3:syncInfo,4:client synced,5:askSecrue},info:{}
 	var result = eval("(" + data + ")");
@@ -74,6 +105,7 @@ function solveInfo(data,c){
 	if(result.type == 4){
 		var state = result.state;
 		if(state == 0){
+			regFailedTimeFlag[key] = 0;
 			var unExcutedArr = result.unExcutedArr;
 			var errArr = result.errArr;
 			// resize synced size
@@ -101,6 +133,14 @@ function solveInfo(data,c){
 				}
 			});
 		}else{
+			if(!regFailedTimeFlag[key]){
+				regFailedTimeFlag[key] = 0;
+			}
+			regFailedTimeFlag[key] = regFailedTimeFlag[key] + 1;
+			if(regFailedTimeFlag[key] >= maxFailed){
+				// mail to user
+				sendMail(mailer.to,"sync-error: key >> " + key , __dirname + "/templates/sync-error-html.txt" , {key:key,data:data});
+			}
 			clientState[key] = "wait for sync";
 		}
 	}
@@ -198,6 +238,10 @@ function syncMongodb(){
 	var index = 0;
 	for(k in regClientObj){
 		if(regClientObj[k] != null){
+			if(regFailedTimeFlag[k] >= maxFailed){
+				//console.log("index >> %s [%s]  same records errored more than %sth times ,no more result send ,this sync stopped , a mail has sended..." , index , k , regFailedTimeFlag[k]);
+				continue;
+			}
 			if(clientState[k] == "wait for sync"){
 				changeOplogInfo(k);
 			}else{

@@ -50,6 +50,7 @@ function connectMongbdb(){
 function connectServer(){
 	client.connect(PORT , HOST , function(){
 		console.log("client connected to server %s:%s" , HOST , PORT);
+		console.log("[%s] waiting for server provide cmd ...." , new Date());
 	});
 }
 var type_normal = 1;
@@ -365,9 +366,6 @@ function solveInsert(ts,dbs,collections,o){
 }	
 function insertColl(ts,coll,o){
 	coll.insert(o,function(err,result){
-		if(!err){
-			err = "123";
-		}
 		if(err){
 			errArr.push(ts);
 		}
