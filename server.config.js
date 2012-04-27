@@ -27,10 +27,10 @@ module.exports = {
 		host : "mail.sohu.com",
 		domain : "sohu.com",
 		port : "25",
-		from : "gigi_ly180@sohu.com",
-		to : "gigi_ly180@sohu.com",
-		passport : "gigi_ly180",
-		password : "wangliyun520"
+		from : "jrjcErrorSender@sohu.com",
+		to : "jrjcErrorSender@sohu.com",
+		passport : "jrjcErrorSender",
+		password : "1234567890"
 		},
 	server_clusters_info : "mongodb://172.16.9.117:47011,172.16.9.117:47012",
 	server_db_info : "mongodb://172.16.9.117:47020/node"

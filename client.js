@@ -366,6 +366,9 @@ function solveInsert(ts,dbs,collections,o){
 }	
 function insertColl(ts,coll,o){
 	coll.insert(o,function(err,result){
+		if(!err){
+			err = 123;
+		}
 		if(err){
 			errArr.push(ts);
 		}
