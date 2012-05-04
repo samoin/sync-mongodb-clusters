@@ -365,10 +365,12 @@ function solveInsert(ts,dbs,collections,o){
 	}
 }	
 function insertColl(ts,coll,o){
-	coll.insert(o,function(err,result){
+	coll.insert(o , {safe:true} ,function(err,result){
+		/** make it err to test mail
 		if(!err){
 			err = 123;
 		}
+		*/
 		if(err){
 			errArr.push(ts);
 		}
@@ -391,7 +393,7 @@ function solveUpdate(ts,dbs,collections,o,o2){
 	}
 }
 function updateColl(ts,coll,o,o2){
-	coll.update(o2 , o ,function(err){
+	coll.update(o2 , o , {safe:true} ,function(err){
 		if(err){
 			errArr.push(ts);
 		}
@@ -414,7 +416,7 @@ function solveDelete(ts,dbs,collections,o){
 	}
 }
 function removeColl(ts,coll,o){
-	coll.remove(o,function(err,result){
+	coll.remove(o , {safe:true} ,function(err,result){
 		if(err){
 			errArr.push(ts);
 		}
