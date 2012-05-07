@@ -11,6 +11,10 @@ var clientName = KEY.name + "-" + KEY.key;
 var client = new net.Socket();
 var clientInfo = "";
 var zlib = require('zlib');
+
+// console color
+var colors = require('mailer/node_modules/colors');
+
 var SYNC_NAMESPACES = config.sync_db_namespace || "";
 var namespaceObj = {};
 var namespaceArr = SYNC_NAMESPACES.split(",");
@@ -49,8 +53,8 @@ function connectMongbdb(){
 
 function connectServer(){
 	client.connect(PORT , HOST , function(){
-		console.log("client connected to server %s:%s" , HOST , PORT);
-		console.log("[%s] waiting for server provide cmd ...." , new Date());
+		console.log(colors.green("client connected to server %s:%s") , HOST , PORT);
+		console.log(colors.green("[%s] waiting for server provide cmd ....") , new Date());
 	});
 }
 var type_normal = 1;
@@ -110,7 +114,7 @@ function solveData(){
 					needEnd = data2Len;
 				}		
 				data2.copy(mergedBuff,buffLen,0,needEnd);
-				console.log("connecting buffers ... , merging length %s , merged length %s , need length %s" , data2Len , mergedBuff.length , expectLen);
+				console.log(colors.yellow("connecting buffers ... , merging length %s , merged length %s , need length %s") , data2Len , mergedBuff.length , expectLen);
 				dataBuff.shift();//remove index 0 
 				dataBuff.shift();//remove index 1 
 				dataBuff.unshift(mergedBuff);//put mergedBuff to index 0 
@@ -153,16 +157,16 @@ function solveData2(infoBuff,lastType){
 }
 
 client.on("end", function(){
-	console.log("client disconnected");
+	console.log(colors.red("client disconnected"));
 });
 
 client.on("close", function(e){
-	console.log("client close,maybe server is down");
+	console.log(colors.red("client close,maybe server is down"));
 	// if server is down ,reconnect it several seconds later
 	restartClient();
 });
 client.on("timeout", function(){
-	console.log("client timeout");
+	console.log(colors.red("client timeout"));
 });
 
 function restartClient(){
@@ -177,7 +181,7 @@ function restartClient(){
 client.on("error", function(e){
 	console.log("client error");
 	if (e.code == 'EADDRINUSE') {
-		console.log('Address in use, retrying...');
+		console.log(colors.red('Address in use, retrying...'));
 		setTimeout(function () {
 		  client.close();
 		  connectServer();
@@ -219,7 +223,7 @@ function solveInfo(str){
 		for(var i=0;i<arr.length;i++){
 			commandArr.push(arr[i]);
 		}
-		console.log("get new command from server...");
+		console.log(colors.green("get new command from server..."));
 		startCommand();
 	}
 }
@@ -290,11 +294,11 @@ function resetSyncedSize(){
 		syncedSize = 0;
 		var datas = '{type:4,state:' + (errArr.length >0 ? 1 : 0) + ',info:' + JSON.stringify(KEY) + ',errArr:' + JSON.stringify(errArr) + ',unExcutedArr:' + JSON.stringify(unExcutedIndexArr) + ',syncCount:' + sync_size +'}';
 		sendData(datas);
-		console.log("this synced result : >> " + datas);
+		console.log(colors.green("this synced result : >> " + datas));
 		unExcutedIndexArr = [];
 		errArr = [];
 		cmdFlag = true;
-		console.log("[%s] waiting for server provide cmd ...." , new Date());
+		console.log(colors.green("[%s] waiting for server provide cmd ....") , new Date());
 	}
 }
 /**
@@ -450,7 +454,7 @@ var cluster = require('cluster');
 if (cluster.isMaster) {
 	cluster.fork();
 	cluster.on('death', function(worker) {
-		console.log('worker ' + worker.pid + ' died , restarting ...');
+		console.log(colors.red('worker ' + worker.pid + ' died , restarting ...'));
 		cluster.fork();
 	});
 } else {

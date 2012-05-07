@@ -42,6 +42,10 @@ var regClientZipInfo = {};
 var regClientStartFlag = {};
 var regFailedTimeFlag = {};
 
+// console color
+var colors = require('mailer/node_modules/colors');
+
+
 /**
 * add listener to catch uncaughtException , as socket error
 
@@ -68,9 +72,9 @@ function sendMail(toMail,subject,tempName,data){
     },
     function(err, result){
       if(err){ 
-       console.error("[mailer] : failed with sending mail from : %s  to : %s, it will sended later...\n error is " + err,mailer.from,toMail);
+       console.error(colors.red("[mailer] : failed with sending mail from : %s  to : %s, it will sended later...\n error is " + err , mailer.from , toMail));
       } else {
-        console.log("[mailer] : mail sended ,state ok ,from : %s ,to : %s", mailer.from,toMail);
+        console.log(colors.green("[mailer] : mail sended ,state ok ,from : %s ,to : %s", mailer.from,toMail));
       }
     });
 }
@@ -87,16 +91,16 @@ function solveInfo(data,c){
 		var remotePort = c.remotePort;
 		if(!KEYSOBJ[key]){//secrue key error
 			c.destroy();
-			console.log("client %s:%s not allow connect, it's without secrue key ..." , remoteAddress , remotePort);
+			console.log(colors.red("client %s:%s not allow connect, it's without secrue key ...") , remoteAddress , remotePort);
 		}else if (regClientObj[key]){//secrue key used
 			c.destroy();
-			console.log("client %s:%s not allow connect, secrue key is in used ..." , remoteAddress , remotePort);
+			console.log(colors.red("client %s:%s not allow connect, secrue key is in used ...") , remoteAddress , remotePort);
 		}else{
 			regClientStartFlag[key] = result.ts;
 			regClientObj[key] = c;
 			if(c){
 				regClientKeyObj[genderIPKey(c)] = key;
-				console.log("client %s:%s[%s] allow connect ..." , remoteAddress , remotePort , key);
+				console.log(colors.green("client %s:%s[%s] allow connect ...") , remoteAddress , remotePort , key);
 			}
 			clientState[key] = "wait for sync";
 		}
@@ -153,7 +157,7 @@ function createServers(){
 		c.setEncoding(common_code);
 		c.bufferSize = 16 * 1024;
 		c.on("connect",function(){
-			console.log("client %s:%s connected, waiting for registe secrue key ..." , c.remoteAddress , c.remotePort);
+			console.log(colors.green("client %s:%s connected, waiting for registe secrue key ...") , c.remoteAddress , c.remotePort);
 			sendData("{type:5}",c);
 		});
 		c.on("data",function(data){
@@ -186,29 +190,29 @@ function createServers(){
 			// reset key in regClientObj to null
 			regClientObj[regClientKeyObj[genderIPKey(c)]] = null;
 			regClientKeyObj[genderIPKey(c)] = null;
-			console.log("server disconnected %s:%s" , c.remoteAddress , c.remotePort);
+			console.log(colors.red("server disconnected %s:%s") , c.remoteAddress , c.remotePort);
 		});
 		/**c.on("drain", function(){
 			console.log("drain %s",genderIPKey(c));
 		});*/
 		c.on("close",function(){
 			var ipKey = c._peername.address + ":" + c._peername.port;
-			console.log("client %s(ip:%s) disconnected, removed it from loop" , regClientKeyObj[ipKey],ipKey);
+			console.log(colors.red("client %s(ip:%s) disconnected, removed it from loop") , regClientKeyObj[ipKey],ipKey);
 			regClientObj[regClientKeyObj[ipKey]] = null;
 			regClientKeyObj[ipKey] = null;		
 		});
 		c.on("error",function(e){
-			console.log("error: %s " , e );
+			console.log(colors.red("error: %s ") , e );
 		});
 		c.pipe(c);
-		console.log("server connected");
+		console.log(colors.green("server connected"));
 	});
 	//listen server
 	server.listen(PORT , HOST , function(){	
 		if((keysLen = KEYS.length) == 0){
-			console.log("\nsync without key register ...");
+			console.log(colors.red("\nsync without key register ..."));
 		}else{
-			console.log("\nsync with key register , allow %s clients ..." , keysLen);
+			console.log(colors.green("\nsync with key register , allow %s clients ...") , keysLen);
 		}
 	});
 	//create interval ,looping mongodb every n second
@@ -245,7 +249,7 @@ function syncMongodb(){
 			if(clientState[k] == "wait for sync"){
 				changeOplogInfo(k);
 			}else{
-				console.log("index >> %s [%s] not synced , loop it next time ...." , index , k);
+				console.log(colors.grey("index >> %s [%s] not synced , loop it next time ....") , index , k);
 			}
 		}
 		index++;
@@ -258,7 +262,7 @@ function changeOplogInfo(k){
 			var clientStartFlag = regClientStartFlag[k];
 			var isClientStartFlagEmpty = clientStartFlag && clientStartFlag != "";
 			if(isClientStartFlagEmpty){
-				console.log("client %s ask to sync from %s" , k , clientStartFlag);
+				console.log(colors.green("client %s ask to sync from %s") , k , clientStartFlag);
 			}
 			var isNew = false;
 			var dao = new oplogDao();
@@ -298,7 +302,7 @@ function startSync(cluster_name,last_flag){
 	clientState[cluster_name] = "syncing";	
 	regClientFromFlag[cluster_name] = last_flag;
 	if(coll){
-		console.log("connection initing....");
+		console.log(colors.green("connection initing...."));
 		return;
 	}
 	var coll = oplogRs.getColl();
@@ -309,13 +313,13 @@ function startSync(cluster_name,last_flag){
 			if(dataLen > 0){
 				regClientFromFlag[cluster_name] = data[0].ts.toString();
 				regClientToFlag[cluster_name] = data[dataLen - 1].ts.toString();
-				console.log("get oplog for %s from %s to %s" , cluster_name,regClientFromFlag[cluster_name],regClientToFlag[cluster_name]);
+				console.log(colors.green("get oplog for %s from %s to %s") , cluster_name,regClientFromFlag[cluster_name],regClientToFlag[cluster_name]);
 				var result = {type:3,info:data};
-				console.log("sending sync info to client \"%s\"",cluster_name);
+				console.log(colors.green("sending sync info to client \"%s\""),cluster_name);
 				sendData(JSON.stringify(result) , regClientObj[cluster_name] , cluster_name);
 			}else{
 				clientState[cluster_name] = "wait for sync";
-				console.log("client \"%s\"  synced all info over ,wait for next change ...", cluster_name);
+				console.log(colors.cyan("client \"%s\"  synced all info over ,wait for next change ..."), cluster_name);
 			}
 		}
 	});
@@ -351,7 +355,7 @@ function sendData(str,client,cluster_name){
 	}
 }
 function sendData2(str,client,cluster_name,buff,buffer,type){
-	console.log("send to %s, before zip size : %s , after zip size : %s" , cluster_name , buff.length , buffer.length);
+	console.log(colors.green("send to %s, before zip size : %s , after zip size : %s") , cluster_name , buff.length , buffer.length);
 	var msgInfo = type + "" + getLen(buffer,type == type_normal?str.length:null);
 	var tmp = new Buffer(msgInfo, common_code);
 	if(cluster_name){
@@ -384,7 +388,7 @@ var cluster = require('cluster');
 if (cluster.isMaster) {
 	cluster.fork();
 	cluster.on('death', function(worker) {
-		console.log('worker ' + worker.pid + ' died , restarting ...');
+		console.log(colors.red('worker ' + worker.pid + ' died , restarting ...'));
 		cluster.fork();
 	});
 } else {
